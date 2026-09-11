@@ -1,0 +1,89 @@
+/* style.css */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+body {
+    font-family: 'Inter', sans-serif;
+    /* subtle moving gradient background could be added here if desired */
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+    background: rgba(30, 41, 59, 0.4);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+/* Custom scrollbar for table */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Status dots animations */
+@keyframes pulse-ring {
+    0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(var(--color-rgb), 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(var(--color-rgb), 0); }
+    100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(var(--color-rgb), 0); }
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    position: relative;
+}
+
+.status-good {
+    background-color: #10b981;
+    --color-rgb: 16, 185, 129;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.6);
+}
+
+.status-warning {
+    background-color: #eab308;
+    --color-rgb: 234, 179, 8;
+    box-shadow: 0 0 12px rgba(234, 179, 8, 0.6);
+}
+
+.status-danger {
+    background-color: #ef4444;
+    --color-rgb: 239, 68, 68;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
+    animation: pulse-ring 2s infinite;
+}
+
+.status-inactive {
+    background-color: #64748b;
+    box-shadow: 0 0 8px rgba(100, 116, 139, 0.4);
+}
+
+/* Row hover highlight */
+tbody tr {
+    transition: background-color 0.2s ease;
+}
+tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Row states */
+.row-danger {
+    background-color: rgba(239, 68, 68, 0.1);
+}
+.row-warning {
+    background-color: rgba(234, 179, 8, 0.1);
+}
+.row-inactive {
+    opacity: 0.7;
+}
