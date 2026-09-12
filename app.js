@@ -7,8 +7,7 @@ const globalThresholdInput = document.getElementById('globalThreshold');
 const applyGlobalBtn = document.getElementById('applyGlobalBtn');
 const sheetNameLabel = document.getElementById('sheetNameLabel');
 
-const fromDateInput = document.getElementById('fromDate');
-const toDateInput = document.getElementById('toDate');
+const dateRangeInput = document.getElementById('dateRange');
 const summaryCards = document.getElementById('summaryCards');
 const sumRevenueEl = document.getElementById('sumRevenue');
 const sumOrdersEl = document.getElementById('sumOrders');
@@ -48,13 +47,18 @@ const extractDateFromCellDate = (val) => {
     return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 };
 
-// Format JS Date to YYYY-MM-DD for input fields
-const formatDateForInput = (date) => {
-    if (!date) return '';
-    const m = (date.getMonth() + 1).toString().padStart(2, '0');
-    const d = date.getDate().toString().padStart(2, '0');
-    return `${date.getFullYear()}-${m}-${d}`;
-};
+// Initialize Flatpickr
+let datePicker = flatpickr("#dateRange", {
+    mode: "range",
+    dateFormat: "Y-m-d",
+    locale: "vn",
+    theme: "dark",
+    onChange: function(selectedDates) {
+        if (selectedDates.length === 2 || selectedDates.length === 0) {
+            processData();
+        }
+    }
+});
 
 // Parse numeric value
 const parseNumeric = (val) => {
@@ -131,8 +135,7 @@ excelFileInput.addEventListener('change', (e) => {
         // Set default dates
         if (minDate && maxDate) {
             // Default to showing all available data from the file
-            fromDateInput.value = formatDateForInput(minDate);
-            toDateInput.value = formatDateForInput(maxDate);
+            datePicker.setDate([minDate, maxDate]);
         }
 
         processData();
@@ -140,29 +143,24 @@ excelFileInput.addEventListener('change', (e) => {
     reader.readAsArrayBuffer(file);
 });
 
-[fromDateInput, toDateInput].forEach(input => {
-    input.addEventListener('change', () => {
-        processData();
-    });
-});
-
 // Process data 
 const processData = () => {
     adsData = [];
     
-    // Parse filters
-    const fromStr = fromDateInput.value;
-    const toStr = toDateInput.value;
+    // Parse filters from Flatpickr
     let fromFilter = null;
     let toFilter = null;
     
-    if (fromStr) {
-        fromFilter = new Date(fromStr);
+    if (datePicker.selectedDates.length > 0) {
+        fromFilter = new Date(datePicker.selectedDates[0]);
         fromFilter.setHours(0, 0, 0, 0);
-    }
-    if (toStr) {
-        toFilter = new Date(toStr);
-        toFilter.setHours(23, 59, 59, 999);
+        if (datePicker.selectedDates.length === 2) {
+            toFilter = new Date(datePicker.selectedDates[1]);
+            toFilter.setHours(23, 59, 59, 999);
+        } else {
+            toFilter = new Date(datePicker.selectedDates[0]); 
+            toFilter.setHours(23, 59, 59, 999);
+        }
     }
 
     // 1. Aggregate Sales by Ad ID
