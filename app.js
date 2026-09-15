@@ -7,6 +7,10 @@ const globalThresholdInput = document.getElementById('globalThreshold');
 const applyGlobalBtn = document.getElementById('applyGlobalBtn');
 const sheetNameLabel = document.getElementById('sheetNameLabel');
 
+const btnTuanAnh = document.getElementById('btnTuanAnh');
+const btnKiet = document.getElementById('btnKiet');
+const btnExport = document.getElementById('btnExport');
+
 const dateRangeInput = document.getElementById('dateRange');
 const summaryCards = document.getElementById('summaryCards');
 const sumRevenueEl = document.getElementById('sumRevenue');
@@ -15,12 +19,15 @@ const sumSpendEl = document.getElementById('sumSpend');
 const sumCpaEl = document.getElementById('sumCpa');
 const sumCostPercentEl = document.getElementById('sumCostPercent');
 
-let adsData = []; 
-let rawAdsData = []; 
+let adsData = [];
+let rawAdsData = [];
 let rawSalesData = [];
-let currentThresholds = {}; 
+let adsDataMap = { 'tuananh': [], 'kiet': [] };
+let activeTab = 'tuananh';
+let sheetNameMap = { 'tuananh': '', 'kiet': '' };
+let currentThresholds = {};
 let sortColumn = 'orders';
-let sortDirection = 'desc'; 
+let sortDirection = 'desc';
 
 // Format currency VND
 const formatCurrency = (value) => {
@@ -40,7 +47,7 @@ const extractDateFromCellDate = (val) => {
         date = new Date(val);
     }
     if (!(date instanceof Date) || isNaN(date)) return null;
-    
+
     // cellDates=true creates a Date where UTC matches Excel's local time.
     // e.g. Excel 2026-06-01 -> 2026-06-01T00:00:00Z
     // We extract the UTC components to form a local Date object at midnight.
@@ -53,7 +60,7 @@ let datePicker = flatpickr("#dateRange", {
     dateFormat: "Y-m-d",
     locale: "vn",
     theme: "dark",
-    onChange: function(selectedDates) {
+    onChange: function (selectedDates) {
         if (selectedDates.length === 2 || selectedDates.length === 0) {
             processData();
         }
@@ -79,10 +86,9 @@ excelFileInput.addEventListener('change', (e) => {
     reader.onload = (e) => {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-        
-        rawSalesData = [];
-        rawAdsData = [];
-        let targetAdsSheetName = '';
+
+        adsDataMap = { 'tuananh': [], 'kiet': [] };
+        sheetNameMap = { 'tuananh': '', 'kiet': '' };
         let minDate = null;
         let maxDate = null;
 
@@ -106,31 +112,35 @@ excelFileInput.addEventListener('change', (e) => {
                         if (!maxDate || jsDate > maxDate) maxDate = jsDate;
                     }
 
-                    if (adId && adId.toString().trim() !== '') {
-                        rawSalesData.push({
-                            adId: adId.toString().trim(),
-                            date: jsDate,
-                            revenue: amount,
-                            qty: qty > 0 ? qty : 1
-                        });
-                    }
+                    const safeAdId = (adId && adId.toString().trim() !== '') ? adId.toString().trim() : null;
+                    const saleName = row['Sale'] || row['Tên Sale'] || row['Người bán'] || row['Nhân viên'] || row['NVKD'] || row['Tên NV'] || 'Không rõ';
+
+                    rawSalesData.push({
+                        adId: safeAdId,
+                        saleName: saleName.toString().trim(),
+                        date: jsDate,
+                        revenue: amount,
+                        qty: qty > 0 ? qty : 1
+                    });
                 });
             }
 
-            // Detect ADS sheet
+            // Detect ADS sheet Tuấn Anh
             if (lowerName.includes('t.anh') || lowerName.includes('tuấn anh')) {
-                targetAdsSheetName = sheetName;
-                rawAdsData = data;
+                sheetNameMap['tuananh'] = sheetName;
+                adsDataMap['tuananh'] = data;
+            }
+            
+            // Detect ADS sheet Kiệt
+            if (lowerName.includes('kiệt') || lowerName.includes('kiet')) {
+                sheetNameMap['kiet'] = sheetName;
+                adsDataMap['kiet'] = data;
             }
         });
 
-        // Fallback
-        if (rawAdsData.length === 0 && workbook.SheetNames.length > 0) {
-            targetAdsSheetName = workbook.SheetNames[0];
-            rawAdsData = XLSX.utils.sheet_to_json(workbook.Sheets[targetAdsSheetName], { defval: null });
-        }
-
-        sheetNameLabel.textContent = `(Dữ liệu từ ${targetAdsSheetName})`;
+        // Set default rawAdsData to current active tab
+        rawAdsData = adsDataMap[activeTab];
+        sheetNameLabel.textContent = sheetNameMap[activeTab] ? `(Dữ liệu từ ${sheetNameMap[activeTab]})` : '(Không tìm thấy sheet)';
 
         // Set default dates
         if (minDate && maxDate) {
@@ -143,14 +153,85 @@ excelFileInput.addEventListener('change', (e) => {
     reader.readAsArrayBuffer(file);
 });
 
+// Tab switching
+const updateTabUI = () => {
+    if (activeTab === 'tuananh') {
+        btnTuanAnh.className = 'flex-1 bg-brand-600 hover:bg-brand-500 text-white font-semibold py-3 px-6 rounded-2xl transition-all shadow-lg shadow-brand-500/30 border border-brand-400';
+        btnKiet.className = 'flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-3 px-6 rounded-2xl transition-all border border-slate-700';
+    } else {
+        btnKiet.className = 'flex-1 bg-brand-600 hover:bg-brand-500 text-white font-semibold py-3 px-6 rounded-2xl transition-all shadow-lg shadow-brand-500/30 border border-brand-400';
+        btnTuanAnh.className = 'flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-3 px-6 rounded-2xl transition-all border border-slate-700';
+    }
+};
+
+btnTuanAnh.addEventListener('click', () => {
+    if (activeTab === 'tuananh') return;
+    activeTab = 'tuananh';
+    updateTabUI();
+    rawAdsData = adsDataMap['tuananh'] || [];
+    sheetNameLabel.textContent = sheetNameMap['tuananh'] ? `(Dữ liệu từ ${sheetNameMap['tuananh']})` : '(Không tìm thấy sheet)';
+    processData();
+});
+
+btnKiet.addEventListener('click', () => {
+    if (activeTab === 'kiet') return;
+    activeTab = 'kiet';
+    updateTabUI();
+    rawAdsData = adsDataMap['kiet'] || [];
+    sheetNameLabel.textContent = sheetNameMap['kiet'] ? `(Dữ liệu từ ${sheetNameMap['kiet']})` : '(Không tìm thấy sheet)';
+    processData();
+});
+
+// Export Excel
+btnExport.addEventListener('click', () => {
+    if (adsData.length === 0) {
+        alert('Không có dữ liệu để xuất!');
+        return;
+    }
+
+    let fromFilterStr = 'Tất cả';
+    let toFilterStr = 'Tất cả';
+
+    if (datePicker.selectedDates.length > 0) {
+        fromFilterStr = datePicker.selectedDates[0].toLocaleDateString('vi-VN');
+        if (datePicker.selectedDates.length === 2) {
+            toFilterStr = datePicker.selectedDates[1].toLocaleDateString('vi-VN');
+        } else {
+            toFilterStr = fromFilterStr;
+        }
+    }
+
+    const exportData = adsData.map(ad => ({
+        'Từ Ngày': fromFilterStr,
+        'Đến Ngày': toFilterStr,
+        'Tên Chiến Dịch': ad.campaign,
+        'Tên Quảng Cáo': ad.adName,
+        'ID Quảng Cáo': ad.id,
+        'Tổng Đơn': ad.orders,
+        'Doanh Thu (VND)': ad.revenue,
+        'Chi Phí Đã Chạy (VND)': ad.spend,
+        'Chi Phí / Đơn (VND)': ad.cpa
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    const sheetName = activeTab === 'tuananh' ? 'BaoCao_TuanAnh' : 'BaoCao_Kiet';
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    
+    // Generate filename
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}`;
+    XLSX.writeFile(wb, `BaoCao_DoanhSo_${activeTab}_${dateStr}.xlsx`);
+});
+
 // Process data 
 const processData = () => {
     adsData = [];
-    
+
     // Parse filters from Flatpickr
     let fromFilter = null;
     let toFilter = null;
-    
+
     if (datePicker.selectedDates.length > 0) {
         fromFilter = new Date(datePicker.selectedDates[0]);
         fromFilter.setHours(0, 0, 0, 0);
@@ -158,7 +239,7 @@ const processData = () => {
             toFilter = new Date(datePicker.selectedDates[1]);
             toFilter.setHours(23, 59, 59, 999);
         } else {
-            toFilter = new Date(datePicker.selectedDates[0]); 
+            toFilter = new Date(datePicker.selectedDates[0]);
             toFilter.setHours(23, 59, 59, 999);
         }
     }
@@ -167,7 +248,7 @@ const processData = () => {
     const salesAgg = {};
     rawSalesData.forEach(sale => {
         let isMatch = true;
-        
+
         if (sale.date) {
             if (fromFilter && sale.date < fromFilter) isMatch = false;
             if (toFilter && sale.date > toFilter) isMatch = false;
@@ -177,7 +258,7 @@ const processData = () => {
             if (!salesAgg[sale.adId]) {
                 salesAgg[sale.adId] = { orders: 0, revenue: 0 };
             }
-            salesAgg[sale.adId].orders += 1; 
+            salesAgg[sale.adId].orders += 1;
             salesAgg[sale.adId].revenue += sale.revenue;
         }
     });
@@ -205,13 +286,13 @@ const processData = () => {
         // Spend from ADS sheet
         // Note: The spend in ADS sheet might be the all-time or monthly total. We use it as is for that row.
         let spend = parseNumeric(row['Tiền Ads (chưa VAT)'] || row['Tiền Ads (Vat 10%)'] || row['Chi phí'] || 0);
-        
+
         // If the user filtered dates and this ad has no orders in that date, should we still count its total spend in the Grand Total?
         // Let's count it. If they ran ads but got 0 orders in that date range, it's still spend. 
         // Wait, what if the spend is from another month entirely?
         // Since we can't filter the spend by date, we'll just include the spend if it's in the rawAdsData.
         // We'll calculate CPA based on the orders they got in this date range vs the total spend shown.
-        
+
         let cpa = 0;
         if (totalOrders > 0) {
             cpa = spend / totalOrders;
@@ -255,6 +336,7 @@ const processData = () => {
     sumCostPercentEl.textContent = costPercent.toFixed(2) + '%';
 
     sortDataAndRender();
+    renderSalesPerformance();
 };
 
 const updateSortIcons = () => {
@@ -332,7 +414,7 @@ const renderTable = () => {
 
     adsData.forEach(ad => {
         const thresholdToUse = ad.threshold !== null ? ad.threshold : globalThreshold;
-        
+
         let statusClass = 'status-good';
         let statusText = 'Tốt';
         let rowClass = '';
@@ -372,8 +454,8 @@ const renderTable = () => {
 
         const tr = document.createElement('tr');
         tr.className = rowClass;
-        
-        const displayName = ad.adName && ad.adName !== ad.campaign 
+
+        const displayName = ad.adName && ad.adName !== ad.campaign
             ? `<div class="font-medium text-white">${ad.campaign}</div><div class="text-xs text-slate-400 mt-1">${ad.adName}</div><div class="text-xs text-slate-500 mt-1">ID: ${ad.id}</div>`
             : `<div class="font-medium text-white">${ad.campaign}</div><div class="text-xs text-slate-500 mt-1">ID: ${ad.id}</div>`;
 
@@ -414,25 +496,25 @@ const renderTable = () => {
         input.addEventListener('input', (e) => {
             const id = e.target.getAttribute('data-id');
             const val = parseFloat(e.target.value);
-            
+
             if (isNaN(val)) {
                 delete currentThresholds[id];
             } else {
                 currentThresholds[id] = val;
             }
-            
+
             const adIndex = adsData.findIndex(a => a.id === id);
             if (adIndex > -1) {
                 adsData[adIndex].threshold = isNaN(val) ? null : val;
             }
         });
-        
+
         input.addEventListener('blur', () => {
             renderTable();
         });
-        
+
         input.addEventListener('keypress', (e) => {
-            if(e.key === 'Enter') {
+            if (e.key === 'Enter') {
                 renderTable();
             }
         });
@@ -440,7 +522,7 @@ const renderTable = () => {
 };
 
 applyGlobalBtn.addEventListener('click', () => {
-    currentThresholds = {}; 
+    currentThresholds = {};
     adsData.forEach(ad => ad.threshold = null);
     renderTable();
 });
@@ -452,3 +534,94 @@ globalThresholdInput.addEventListener('keypress', (e) => {
         renderTable();
     }
 });
+
+// Render Sales Performance
+const renderSalesPerformance = () => {
+    const salesPerfContainer = document.getElementById('salesPerformanceContainer');
+    const salesPerfBody = document.getElementById('salesPerfBody');
+    if (!salesPerfContainer || !salesPerfBody) return;
+
+    if (rawSalesData.length === 0) {
+        salesPerfContainer.classList.add('hidden');
+        return;
+    }
+
+    salesPerfContainer.classList.remove('hidden');
+    salesPerfBody.innerHTML = '';
+
+    // Aggregate by Sale Name based on date filter
+    let fromFilter = null;
+    let toFilter = null;
+    
+    if (datePicker.selectedDates.length > 0) {
+        fromFilter = new Date(datePicker.selectedDates[0]);
+        fromFilter.setHours(0, 0, 0, 0);
+        if (datePicker.selectedDates.length === 2) {
+            toFilter = new Date(datePicker.selectedDates[1]);
+            toFilter.setHours(23, 59, 59, 999);
+        } else {
+            toFilter = new Date(datePicker.selectedDates[0]); 
+            toFilter.setHours(23, 59, 59, 999);
+        }
+    }
+
+    const saleAgg = {};
+    rawSalesData.forEach(sale => {
+        let isMatch = true;
+        
+        if (sale.date) {
+            if (fromFilter && sale.date < fromFilter) isMatch = false;
+            if (toFilter && sale.date > toFilter) isMatch = false;
+        }
+
+        if (isMatch) {
+            if (!saleAgg[sale.saleName]) {
+                saleAgg[sale.saleName] = { orders: 0, revenue: 0 };
+            }
+            saleAgg[sale.saleName].orders += 1;
+            saleAgg[sale.saleName].revenue += sale.revenue;
+        }
+    });
+
+    const sortedSales = Object.keys(saleAgg).map(name => ({
+        name: name,
+        orders: saleAgg[name].orders,
+        revenue: saleAgg[name].revenue
+    })).sort((a, b) => b.revenue - a.revenue);
+
+    if (sortedSales.length === 0) {
+        salesPerfContainer.classList.add('hidden');
+        return;
+    }
+
+    sortedSales.forEach((s, index) => {
+        const tr = document.createElement('tr');
+        
+        // Highlight top 3
+        let rankClass = 'text-slate-400';
+        if (index === 0) rankClass = 'text-yellow-400 font-bold text-lg drop-shadow-[0_0_5px_rgba(250,204,21,0.5)]';
+        else if (index === 1) rankClass = 'text-slate-300 font-bold text-base';
+        else if (index === 2) rankClass = 'text-amber-600 font-bold text-base';
+
+        tr.innerHTML = `
+            <td class="px-6 py-4 whitespace-nowrap ${rankClass} text-center w-16">
+                #${index + 1}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap font-medium text-white">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center font-bold text-xs uppercase">
+                        ${s.name.substring(0, 2)}
+                    </div>
+                    ${s.name}
+                </div>
+            </td>
+            <td class="px-6 py-4 text-center font-bold text-white">
+                ${s.orders}
+            </td>
+            <td class="px-6 py-4 text-right font-medium text-emerald-300">
+                ${formatCurrency(s.revenue)}
+            </td>
+        `;
+        salesPerfBody.appendChild(tr);
+    });
+};
