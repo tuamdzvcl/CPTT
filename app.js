@@ -10,6 +10,8 @@ const sheetNameLabel = document.getElementById('sheetNameLabel');
 const btnTuanAnh = document.getElementById('btnTuanAnh');
 const btnKiet = document.getElementById('btnKiet');
 const btnExport = document.getElementById('btnExport');
+const calc10PercentBtn = document.getElementById('calc10PercentBtn');
+const filterBtns = document.querySelectorAll('#statusFilters > div');
 
 const dateRangeInput = document.getElementById('dateRange');
 const summaryCards = document.getElementById('summaryCards');
@@ -28,6 +30,8 @@ let sheetNameMap = { 'tuananh': '', 'kiet': '' };
 let currentThresholds = {};
 let sortColumn = 'orders';
 let sortDirection = 'desc';
+let is10PercentMode = false;
+let currentFilter = 'all';
 
 // Format currency VND
 const formatCurrency = (value) => {
@@ -359,18 +363,37 @@ const sortDataAndRender = () => {
         let valB = b[sortColumn];
 
         if (sortColumn === 'status') {
-            // Helper to get status severity: Danger=3, Warning=2, Good=1, Inactive=0
             const getSeverity = (ad) => {
-                const threshold = ad.threshold !== null ? ad.threshold : (parseFloat(globalThresholdInput.value) || 0);
-                if (ad.orders === 0 && ad.spend === 0) return 0;
-                if (ad.orders === 0 && threshold > 0 && ad.spend >= threshold) return 3;
-                if (ad.orders === 0 && threshold > 0 && ad.spend >= threshold * 0.8) return 2;
-                if (ad.orders === 0) return 0;
-                if (threshold > 0) {
-                    if (ad.cpa > threshold) return 3;
-                    if (ad.cpa >= threshold * 0.8) return 2;
+                const defaultZeroOrderThreshold = 350000;
+
+                if (is10PercentMode) {
+                    if (ad.spend === 0) return 0;
+                    if (ad.orders === 0) {
+                        if (ad.spend > defaultZeroOrderThreshold) return 3;
+                        if (ad.spend >= defaultZeroOrderThreshold * 0.8) return 2;
+                        return 1;
+                    }
+                    const tenPercentRev = ad.revenue * 0.1;
+                    if (ad.spend > tenPercentRev) return 3;
+                    if (ad.spend >= tenPercentRev * 0.8) return 2;
+                    return 1;
+                } else {
+                    const threshold = ad.threshold !== null ? ad.threshold : (parseFloat(globalThresholdInput.value) || 0);
+                    
+                    if (ad.orders === 0) {
+                        if (ad.spend === 0) return 0;
+                        const t = threshold > 0 ? threshold : defaultZeroOrderThreshold;
+                        if (ad.spend > t) return 3;
+                        if (ad.spend >= t * 0.8) return 2;
+                        return 1;
+                    }
+                    
+                    if (threshold > 0) {
+                        if (ad.cpa > threshold) return 3;
+                        if (ad.cpa >= threshold * 0.8) return 2;
+                    }
+                    return 1;
                 }
-                return 1;
             };
             valA = getSeverity(a);
             valB = getSeverity(b);
@@ -411,46 +434,92 @@ const renderTable = () => {
     tableBody.innerHTML = '';
 
     const globalThreshold = parseFloat(globalThresholdInput.value) || 0;
+    const defaultZeroOrderThreshold = 350000;
 
     adsData.forEach(ad => {
-        const thresholdToUse = ad.threshold !== null ? ad.threshold : globalThreshold;
-
         let statusClass = 'status-good';
         let statusText = 'Tốt';
         let rowClass = '';
+        
+        const rowThreshold = ad.threshold !== null ? ad.threshold : globalThreshold;
 
-        if (ad.orders === 0) {
+        if (is10PercentMode) {
             if (ad.spend === 0) {
                 statusClass = 'status-inactive';
                 statusText = 'Chưa tiêu tiền';
                 rowClass = 'row-inactive';
-            } else {
-                if (thresholdToUse > 0 && ad.spend >= thresholdToUse) {
+            } else if (ad.orders === 0) {
+                if (ad.spend > defaultZeroOrderThreshold) {
                     statusClass = 'status-danger';
-                    statusText = 'Vượt ngưỡng (0 đơn)';
+                    statusText = 'Vượt 350k (0 đơn)';
                     rowClass = 'row-danger';
-                } else if (thresholdToUse > 0 && ad.spend >= thresholdToUse * 0.8) {
+                } else if (ad.spend >= defaultZeroOrderThreshold * 0.8) {
                     statusClass = 'status-warning';
-                    statusText = 'Cảnh báo (0 đơn)';
+                    statusText = 'Cảnh báo 350k';
                     rowClass = 'row-warning';
                 } else {
-                    statusClass = 'status-inactive';
-                    statusText = 'Chưa có đơn';
+                    statusClass = 'status-good';
+                    statusText = 'Tốt (< 350k)';
+                }
+            } else {
+                const tenPercentRev = ad.revenue * 0.1;
+                if (ad.spend > tenPercentRev) {
+                    statusClass = 'status-danger';
+                    statusText = 'Lỗ (>10% DT)';
+                    rowClass = 'row-danger';
+                } else if (ad.spend >= tenPercentRev * 0.8) {
+                    statusClass = 'status-warning';
+                    statusText = 'Cảnh báo (>=8% DT)';
+                    rowClass = 'row-warning';
+                } else {
+                    statusClass = 'status-good';
+                    statusText = 'Lãi (<8% DT)';
                 }
             }
         } else {
-            if (thresholdToUse > 0) {
-                if (ad.cpa > thresholdToUse) {
-                    statusClass = 'status-danger';
-                    statusText = 'Vượt ngưỡng';
-                    rowClass = 'row-danger';
-                } else if (ad.cpa >= thresholdToUse * 0.8) {
-                    statusClass = 'status-warning';
-                    statusText = 'Cảnh báo (>80%)';
-                    rowClass = 'row-warning';
+            if (ad.orders === 0) {
+                if (ad.spend === 0) {
+                    statusClass = 'status-inactive';
+                    statusText = 'Chưa tiêu tiền';
+                    rowClass = 'row-inactive';
+                } else {
+                    const thresholdToUse = rowThreshold > 0 ? rowThreshold : defaultZeroOrderThreshold;
+                    if (ad.spend > thresholdToUse) {
+                        statusClass = 'status-danger';
+                        statusText = `Vượt ngưỡng ${rowThreshold > 0 ? '(0 đơn)' : '350k'}`;
+                        rowClass = 'row-danger';
+                    } else if (ad.spend >= thresholdToUse * 0.8) {
+                        statusClass = 'status-warning';
+                        statusText = `Cảnh báo ${rowThreshold > 0 ? '(0 đơn)' : '350k'}`;
+                        rowClass = 'row-warning';
+                    } else {
+                        statusClass = 'status-good';
+                        statusText = 'Tốt (0 đơn)';
+                    }
+                }
+            } else {
+                if (rowThreshold > 0) {
+                    if (ad.cpa > rowThreshold) {
+                        statusClass = 'status-danger';
+                        statusText = 'Vượt ngưỡng';
+                        rowClass = 'row-danger';
+                    } else if (ad.cpa >= rowThreshold * 0.8) {
+                        statusClass = 'status-warning';
+                        statusText = 'Cảnh báo (>80%)';
+                        rowClass = 'row-warning';
+                    }
                 }
             }
         }
+
+        // Apply filters
+        let isDanger = statusClass === 'status-danger';
+        let isWarning = statusClass === 'status-warning';
+        let isGood = statusClass === 'status-good' || (statusClass === 'status-inactive' && ad.orders > 0);
+
+        if (currentFilter === 'danger' && !isDanger) return;
+        if (currentFilter === 'warning' && !isWarning) return;
+        if (currentFilter === 'good' && !isGood) return;
 
         const tr = document.createElement('tr');
         tr.className = rowClass;
@@ -476,11 +545,16 @@ const renderTable = () => {
                 ${ad.orders > 0 ? formatCurrency(ad.cpa) : '<span class="text-slate-500 font-normal">N/A</span>'}
             </td>
             <td class="px-6 py-4">
-                <input type="number" 
-                       data-id="${ad.id}" 
-                       value="${ad.threshold !== null ? ad.threshold : ''}" 
-                       placeholder="${globalThreshold > 0 ? 'Mặc: ' + globalThreshold : 'Nhập...'}"
-                       class="row-threshold w-full bg-slate-900/50 border border-slate-700/50 text-white text-xs rounded focus:ring-brand-500 focus:border-brand-500 block p-2 outline-none placeholder-slate-600 transition-all">
+                ${is10PercentMode ? 
+                    (ad.orders === 0 ? 
+                        `<span class="text-purple-400 font-medium whitespace-nowrap">Mặc định: 350.000 đ</span>` : 
+                        `<span class="text-purple-400 font-medium whitespace-nowrap">Ngưỡng: ${formatCurrency(ad.revenue * 0.1)}</span>`) :
+                    `<input type="number" 
+                           data-id="${ad.id}" 
+                           value="${ad.threshold !== null ? ad.threshold : ''}" 
+                           placeholder="${globalThreshold > 0 ? 'Mặc: ' + globalThreshold : 'Nhập...'}"
+                           class="row-threshold w-full bg-slate-900/50 border border-slate-700/50 text-white text-xs rounded focus:ring-brand-500 focus:border-brand-500 block p-2 outline-none placeholder-slate-600 transition-all">`
+                }
             </td>
             <td class="px-6 py-4 text-center">
                 <div class="flex flex-col items-center justify-center gap-1">
@@ -522,17 +596,44 @@ const renderTable = () => {
 };
 
 applyGlobalBtn.addEventListener('click', () => {
+    is10PercentMode = false;
     currentThresholds = {};
     adsData.forEach(ad => ad.threshold = null);
     renderTable();
 });
 
+calc10PercentBtn.addEventListener('click', () => {
+    is10PercentMode = true;
+    renderTable();
+});
+
 globalThresholdInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
+        is10PercentMode = false;
         currentThresholds = {};
         adsData.forEach(ad => ad.threshold = null);
         renderTable();
     }
+});
+
+filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const filter = btn.getAttribute('data-filter');
+        currentFilter = filter;
+        
+        // Update UI
+        filterBtns.forEach(b => {
+            if (b.getAttribute('data-filter') === filter) {
+                b.classList.remove('opacity-50');
+                b.classList.add('border-white/20', 'shadow-md');
+            } else {
+                b.classList.add('opacity-50');
+                b.classList.remove('border-white/20', 'shadow-md');
+            }
+        });
+
+        renderTable();
+    });
 });
 
 // Render Sales Performance

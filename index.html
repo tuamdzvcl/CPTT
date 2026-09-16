@@ -63,14 +63,15 @@
                 </div>
             </div>
             <div class="flex-1 w-full">
-                <label class="block text-sm font-medium text-slate-300 mb-2">2. Đặt ngưỡng áp dụng chung (VND) - Có thể
-                    tùy chỉnh từng dòng sau</label>
-                <div class="flex gap-3">
-                    <input type="number" id="globalThreshold" placeholder="Ví dụ: 300000"
+                <label class="block text-sm font-medium text-slate-300 mb-2">2. Đặt ngưỡng hoặc Tính tự động</label>
+                <div class="flex gap-2">
+                    <input type="number" id="globalThreshold" placeholder="CPA (Ví dụ: 300000)"
                         class="flex-1 bg-slate-800/50 border border-slate-700/50 text-white text-sm rounded-full focus:ring-brand-500 focus:border-brand-500 block w-full p-2.5 px-4 outline-none transition-all placeholder-slate-500">
                     <button id="applyGlobalBtn"
-                        class="bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2 px-6 rounded-full transition-all shadow-lg shadow-brand-500/30">Áp
+                        class="bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2 px-4 rounded-full transition-all shadow-lg shadow-brand-500/30">Áp
                         dụng</button>
+                    <button id="calc10PercentBtn"
+                        class="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-2 px-4 rounded-full transition-all shadow-lg shadow-purple-500/30 whitespace-nowrap" title="Tính ngưỡng = 10% Doanh Thu">Ngưỡng 10%</button>
                 </div>
             </div>
             <div class="flex-1 w-full">
@@ -135,19 +136,25 @@
         <!-- Data Table (Glassmorphism) -->
         <div id="tableContainer"
             class="glass-panel rounded-2xl shadow-2xl border border-white/10 overflow-hidden hidden transition-all duration-500 mb-8">
-            <div class="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+            <div class="p-6 border-b border-white/10 flex flex-col lg:flex-row justify-between items-start lg:items-center bg-white/5 gap-4">
                 <h2 class="text-xl font-semibold text-white">Kết quả phân tích <span id="sheetNameLabel"
                         class="text-brand-500 text-sm ml-2"></span></h2>
-                <div class="flex gap-4 text-xs font-medium">
-                    <div class="flex items-center gap-1.5"><span
-                            class="w-3 h-3 rounded-full bg-emerald-500/80 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></span>
-                        Tốt</div>
-                    <div class="flex items-center gap-1.5"><span
-                            class="w-3 h-3 rounded-full bg-yellow-500/80 shadow-[0_0_8px_rgba(234,179,8,0.5)]"></span>
-                        Cảnh báo (>= 80% ngưỡng)</div>
-                    <div class="flex items-center gap-1.5"><span
-                            class="w-3 h-3 rounded-full bg-red-500/80 shadow-[0_0_8px_rgba(239,68,68,0.5)]"></span> Vượt
-                        ngưỡng</div>
+                <div class="flex flex-wrap gap-3 text-xs font-medium" id="statusFilters">
+                    <div class="flex items-center gap-1.5 cursor-pointer px-3 py-1.5 rounded-full bg-slate-800/80 hover:bg-slate-700 transition-colors border border-transparent" data-filter="all" id="filter-all">
+                        <span class="text-white">Tất cả</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 cursor-pointer px-3 py-1.5 rounded-full bg-slate-800/80 hover:bg-slate-700 transition-colors border border-transparent opacity-50" data-filter="good" id="filter-good">
+                        <span class="w-3 h-3 rounded-full bg-emerald-500/80 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></span>
+                        <span class="text-slate-300">Tốt</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 cursor-pointer px-3 py-1.5 rounded-full bg-slate-800/80 hover:bg-slate-700 transition-colors border border-transparent opacity-50" data-filter="warning" id="filter-warning">
+                        <span class="w-3 h-3 rounded-full bg-yellow-500/80 shadow-[0_0_8px_rgba(234,179,8,0.5)]"></span>
+                        <span class="text-slate-300">Cảnh báo</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 cursor-pointer px-3 py-1.5 rounded-full bg-slate-800/80 hover:bg-slate-700 transition-colors border border-transparent opacity-50" data-filter="danger" id="filter-danger">
+                        <span class="w-3 h-3 rounded-full bg-red-500/80 shadow-[0_0_8px_rgba(239,68,68,0.5)]"></span>
+                        <span class="text-slate-300">Vượt ngưỡng</span>
+                    </div>
                 </div>
             </div>
             <div class="overflow-x-auto">
