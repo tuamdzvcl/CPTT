@@ -1,5 +1,7 @@
 // app.js
 const excelFileInput = document.getElementById('excelFile');
+const expenseFileInput = document.getElementById('expenseFile');
+const idSuffixInput = document.getElementById('idSuffixInput');
 const tableContainer = document.getElementById('tableContainer');
 const emptyState = document.getElementById('emptyState');
 const tableBody = document.getElementById('tableBody');
@@ -24,6 +26,7 @@ const sumCostPercentEl = document.getElementById('sumCostPercent');
 let adsData = [];
 let rawAdsData = [];
 let rawSalesData = [];
+let rawExpenseData = [];
 let adsDataMap = { 'tuananh': [], 'kiet': [] };
 let activeTab = 'tuananh';
 let sheetNameMap = { 'tuananh': '', 'kiet': '' };
@@ -157,6 +160,30 @@ excelFileInput.addEventListener('change', (e) => {
     reader.readAsArrayBuffer(file);
 });
 
+// Handle expense file upload
+expenseFileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        rawExpenseData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+        
+        processData();
+    };
+    reader.readAsArrayBuffer(file);
+});
+
+idSuffixInput.addEventListener('input', () => {
+    if (rawExpenseData.length > 0) {
+        processData();
+    }
+});
+
 // Tab switching
 const updateTabUI = () => {
     if (activeTab === 'tuananh') {
@@ -213,7 +240,8 @@ btnExport.addEventListener('click', () => {
         'ID Quảng Cáo': ad.id,
         'Tổng Đơn': ad.orders,
         'Doanh Thu (VND)': ad.revenue,
-        'Chi Phí Đã Chạy (VND)': ad.spend,
+        'Chi Phí Báo Cáo (VND)': ad.spend,
+        'Chi Phí Thực Tế (VND)': ad.realSpend,
         'Chi Phí / Đơn (VND)': ad.cpa
     }));
 
@@ -270,6 +298,29 @@ const processData = () => {
     let grandTotalOrders = 0;
     let grandTotalRevenue = 0;
     let grandTotalSpend = 0;
+    let grandTotalRealSpend = 0;
+    const hasExpenseFile = rawExpenseData.length > 0;
+    const suffix = idSuffixInput.value.trim() || '501';
+
+    // Build realSpendMap
+    const realSpendMap = {};
+    rawExpenseData.forEach(row => {
+        let expenseId = (row['Mã quảng cáo'] || row['ID quảng cáo'] || row['ID QC'] || row['ID chiến dịch'] || '').toString().trim();
+        if (expenseId) {
+            // Đổi đuôi ID thành giá trị người dùng nhập
+            const len = suffix.length;
+            if (expenseId.length >= len) {
+                expenseId = expenseId.slice(0, -len) + suffix;
+            } else {
+                expenseId = expenseId + suffix;
+            }
+            const spend = parseNumeric(row['Số tiền đã chi tiêu (VND)'] || row['Chi tiêu'] || 0);
+            if (!realSpendMap[expenseId]) realSpendMap[expenseId] = 0;
+            realSpendMap[expenseId] += spend;
+        }
+    });
+
+    const processedIds = new Set();
 
     // 2. Map with Ads data
     rawAdsData.forEach(row => {
@@ -287,27 +338,24 @@ const processData = () => {
             totalRevenue = salesAgg[adId].revenue;
         }
 
-        // Spend from ADS sheet
-        // Note: The spend in ADS sheet might be the all-time or monthly total. We use it as is for that row.
         let spend = parseNumeric(row['Tiền Ads (chưa VAT)'] || row['Tiền Ads (Vat 10%)'] || row['Chi phí'] || 0);
-
-        // If the user filtered dates and this ad has no orders in that date, should we still count its total spend in the Grand Total?
-        // Let's count it. If they ran ads but got 0 orders in that date range, it's still spend. 
-        // Wait, what if the spend is from another month entirely?
-        // Since we can't filter the spend by date, we'll just include the spend if it's in the rawAdsData.
-        // We'll calculate CPA based on the orders they got in this date range vs the total spend shown.
+        const uniqueId = adId || Math.random().toString(36).substr(2, 9);
+        
+        processedIds.add(uniqueId);
+        
+        const realSpend = realSpendMap[uniqueId] || 0;
+        const spendToEvaluate = hasExpenseFile ? realSpend : spend;
 
         let cpa = 0;
         if (totalOrders > 0) {
-            cpa = spend / totalOrders;
+            cpa = spendToEvaluate / totalOrders;
         }
-
-        const uniqueId = adId || Math.random().toString(36).substr(2, 9);
 
         // Accumulate grand totals
         grandTotalOrders += totalOrders;
         grandTotalRevenue += totalRevenue;
         grandTotalSpend += spend;
+        grandTotalRealSpend += realSpend;
 
         adsData.push({
             id: uniqueId,
@@ -316,26 +364,51 @@ const processData = () => {
             orders: totalOrders,
             revenue: totalRevenue,
             spend: spend,
+            realSpend: realSpend,
             cpa: cpa,
-            threshold: currentThresholds[uniqueId] !== undefined ? currentThresholds[uniqueId] : null
+            threshold: currentThresholds[uniqueId] !== undefined ? currentThresholds[uniqueId] : null,
+            spendToEvaluate: spendToEvaluate
         });
+    });
+
+    // Thêm các ID có trong file chi tiêu nhưng không có trong file sale/ads
+    Object.keys(realSpendMap).forEach(expId => {
+        if (!processedIds.has(expId)) {
+            const realSpend = realSpendMap[expId];
+            grandTotalRealSpend += realSpend;
+            
+            adsData.push({
+                id: expId,
+                campaign: 'Không có trong Báo Cáo',
+                adName: '',
+                orders: 0,
+                revenue: 0,
+                spend: 0,
+                realSpend: realSpend,
+                cpa: 0,
+                threshold: currentThresholds[expId] !== undefined ? currentThresholds[expId] : null,
+                spendToEvaluate: realSpend
+            });
+        }
     });
 
     // Update Summary UI
     summaryCards.classList.remove('hidden');
     sumRevenueEl.textContent = formatCurrency(grandTotalRevenue);
     sumOrdersEl.textContent = grandTotalOrders;
-    sumSpendEl.textContent = formatCurrency(grandTotalSpend);
+    
+    const finalSpendTotal = hasExpenseFile ? grandTotalRealSpend : grandTotalSpend;
+    sumSpendEl.textContent = formatCurrency(finalSpendTotal);
     
     let grandCpa = 0;
     if (grandTotalOrders > 0) {
-        grandCpa = grandTotalSpend / grandTotalOrders;
+        grandCpa = finalSpendTotal / grandTotalOrders;
     }
     sumCpaEl.textContent = formatCurrency(grandCpa);
 
     let costPercent = 0;
     if (grandTotalRevenue > 0) {
-        costPercent = (grandTotalSpend / grandTotalRevenue) * 100;
+        costPercent = (finalSpendTotal / grandTotalRevenue) * 100;
     }
     sumCostPercentEl.textContent = costPercent.toFixed(2) + '%';
 
@@ -365,26 +438,27 @@ const sortDataAndRender = () => {
         if (sortColumn === 'status') {
             const getSeverity = (ad) => {
                 const defaultZeroOrderThreshold = 350000;
+                const spendToEvaluate = ad.spendToEvaluate;
 
                 if (is10PercentMode) {
-                    if (ad.spend === 0) return 0;
+                    if (spendToEvaluate === 0) return 0;
                     if (ad.orders === 0) {
-                        if (ad.spend > defaultZeroOrderThreshold) return 3;
-                        if (ad.spend >= defaultZeroOrderThreshold * 0.8) return 2;
+                        if (spendToEvaluate > defaultZeroOrderThreshold) return 3;
+                        if (spendToEvaluate >= defaultZeroOrderThreshold * 0.8) return 2;
                         return 1;
                     }
                     const tenPercentRev = ad.revenue * 0.1;
-                    if (ad.spend > tenPercentRev) return 3;
-                    if (ad.spend >= tenPercentRev * 0.8) return 2;
+                    if (spendToEvaluate > tenPercentRev) return 3;
+                    if (spendToEvaluate >= tenPercentRev * 0.8) return 2;
                     return 1;
                 } else {
                     const threshold = ad.threshold !== null ? ad.threshold : (parseFloat(globalThresholdInput.value) || 0);
                     
                     if (ad.orders === 0) {
-                        if (ad.spend === 0) return 0;
+                        if (spendToEvaluate === 0) return 0;
                         const t = threshold > 0 ? threshold : defaultZeroOrderThreshold;
-                        if (ad.spend > t) return 3;
-                        if (ad.spend >= t * 0.8) return 2;
+                        if (spendToEvaluate > t) return 3;
+                        if (spendToEvaluate >= t * 0.8) return 2;
                         return 1;
                     }
                     
@@ -435,6 +509,7 @@ const renderTable = () => {
 
     const globalThreshold = parseFloat(globalThresholdInput.value) || 0;
     const defaultZeroOrderThreshold = 350000;
+    const hasExpenseFile = rawExpenseData.length > 0;
 
     adsData.forEach(ad => {
         let statusClass = 'status-good';
@@ -442,18 +517,19 @@ const renderTable = () => {
         let rowClass = '';
         
         const rowThreshold = ad.threshold !== null ? ad.threshold : globalThreshold;
+        const spendToEvaluate = ad.spendToEvaluate;
 
         if (is10PercentMode) {
-            if (ad.spend === 0) {
+            if (spendToEvaluate === 0) {
                 statusClass = 'status-inactive';
                 statusText = 'Chưa tiêu tiền';
                 rowClass = 'row-inactive';
             } else if (ad.orders === 0) {
-                if (ad.spend > defaultZeroOrderThreshold) {
+                if (spendToEvaluate > defaultZeroOrderThreshold) {
                     statusClass = 'status-danger';
                     statusText = 'Vượt 350k (0 đơn)';
                     rowClass = 'row-danger';
-                } else if (ad.spend >= defaultZeroOrderThreshold * 0.8) {
+                } else if (spendToEvaluate >= defaultZeroOrderThreshold * 0.8) {
                     statusClass = 'status-warning';
                     statusText = 'Cảnh báo 350k';
                     rowClass = 'row-warning';
@@ -463,11 +539,11 @@ const renderTable = () => {
                 }
             } else {
                 const tenPercentRev = ad.revenue * 0.1;
-                if (ad.spend > tenPercentRev) {
+                if (spendToEvaluate > tenPercentRev) {
                     statusClass = 'status-danger';
                     statusText = 'Lỗ (>10% DT)';
                     rowClass = 'row-danger';
-                } else if (ad.spend >= tenPercentRev * 0.8) {
+                } else if (spendToEvaluate >= tenPercentRev * 0.8) {
                     statusClass = 'status-warning';
                     statusText = 'Cảnh báo (>=8% DT)';
                     rowClass = 'row-warning';
@@ -478,17 +554,17 @@ const renderTable = () => {
             }
         } else {
             if (ad.orders === 0) {
-                if (ad.spend === 0) {
+                if (spendToEvaluate === 0) {
                     statusClass = 'status-inactive';
                     statusText = 'Chưa tiêu tiền';
                     rowClass = 'row-inactive';
                 } else {
                     const thresholdToUse = rowThreshold > 0 ? rowThreshold : defaultZeroOrderThreshold;
-                    if (ad.spend > thresholdToUse) {
+                    if (spendToEvaluate > thresholdToUse) {
                         statusClass = 'status-danger';
                         statusText = `Vượt ngưỡng ${rowThreshold > 0 ? '(0 đơn)' : '350k'}`;
                         rowClass = 'row-danger';
-                    } else if (ad.spend >= thresholdToUse * 0.8) {
+                    } else if (spendToEvaluate >= thresholdToUse * 0.8) {
                         statusClass = 'status-warning';
                         statusText = `Cảnh báo ${rowThreshold > 0 ? '(0 đơn)' : '350k'}`;
                         rowClass = 'row-warning';
@@ -538,8 +614,11 @@ const renderTable = () => {
             <td class="px-6 py-4 text-right font-medium text-emerald-300">
                 ${formatCurrency(ad.revenue)}
             </td>
-            <td class="px-6 py-4 text-right font-medium text-slate-300">
+            <td class="px-6 py-4 text-right font-medium text-slate-400">
                 ${formatCurrency(ad.spend)}
+            </td>
+            <td class="px-6 py-4 text-right font-medium text-blue-300">
+                ${ad.realSpend > 0 ? formatCurrency(ad.realSpend) : '<span class="text-slate-600 font-normal">-</span>'}
             </td>
             <td class="px-6 py-4 text-right font-bold ${statusClass === 'status-danger' ? 'text-red-400' : (statusClass === 'status-warning' ? 'text-yellow-400' : 'text-slate-300')}">
                 ${ad.orders > 0 ? formatCurrency(ad.cpa) : '<span class="text-slate-500 font-normal">N/A</span>'}
