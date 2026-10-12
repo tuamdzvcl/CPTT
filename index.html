@@ -106,6 +106,168 @@
             </div>
         </div>
 
+        <!-- Target & KPI Management Panel -->
+        <div class="glass-panel p-6 rounded-2xl mb-8 shadow-2xl border border-white/10 transition-all">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 mb-5 border-b border-white/10 gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-500 to-purple-600 flex items-center justify-center shadow-lg shadow-brand-500/20 text-white font-bold text-lg">
+                        🎯
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                            Kế Hoạch & Mục Tiêu Doanh Số
+                            <span class="text-xs font-normal px-2.5 py-0.5 rounded-full bg-brand-500/20 text-brand-300 border border-brand-500/30">Theo dõi tiến độ</span>
+                        </h2>
+                        <p class="text-xs text-slate-400">Tự động phân bổ định mức mỗi ngày & So sánh thực tế để cảnh báo cắt giảm chi phí</p>
+                    </div>
+                </div>
+                <div id="targetDateBadge" class="text-xs bg-slate-800/80 border border-slate-700/60 text-slate-300 px-3.5 py-1.5 rounded-full flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-brand-400 animate-pulse"></span>
+                    <span>Đang tính cho: <strong id="targetSelectedDaysText" class="text-brand-300 font-bold">0 ngày</strong></span>
+                </div>
+            </div>
+
+            <!-- Inputs & Daily Breakdown -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+                <!-- Target Revenue Month -->
+                <div class="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 hover:border-emerald-500/40 transition-colors">
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex justify-between items-center">
+                        <span>Mục tiêu Doanh Thu Tháng</span>
+                        <span id="targetRevPreview" class="text-emerald-400 font-bold normal-case text-xs">0 đ</span>
+                    </label>
+                    <div class="relative">
+                        <input type="text" id="targetMonthRevenue" placeholder="Ví dụ: 500.000.000 (gõ 500 = 500tr)"
+                            class="bg-slate-900/70 border border-slate-700 text-white text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5 px-3 outline-none transition-all placeholder-slate-600 font-semibold text-emerald-300">
+                    </div>
+                    <div class="mt-2.5 pt-2 border-t border-white/5 text-xs flex justify-between text-slate-400">
+                        <span>Cần đạt mỗi ngày:</span>
+                        <strong id="dailyTargetRev" class="text-emerald-400 font-bold">0 đ/ngày</strong>
+                    </div>
+                </div>
+
+                <!-- Target Spend Month -->
+                <div class="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 hover:border-rose-500/40 transition-colors">
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex justify-between items-center">
+                        <span>Mục tiêu Chi Phí Ads Tháng</span>
+                        <span id="targetSpendPreview" class="text-rose-400 font-bold normal-case text-xs">0 đ</span>
+                    </label>
+                    <div class="relative">
+                        <input type="text" id="targetMonthSpend" placeholder="Ví dụ: 30.000.000 (gõ 30 = 30tr)"
+                            class="bg-slate-900/70 border border-slate-700 text-white text-sm rounded-xl focus:ring-rose-500 focus:border-rose-500 block w-full p-2.5 px-3 outline-none transition-all placeholder-slate-600 font-semibold text-rose-300">
+                    </div>
+                    <div class="mt-2.5 pt-2 border-t border-white/5 text-xs flex justify-between text-slate-400">
+                        <span>Chi tối đa mỗi ngày:</span>
+                        <strong id="dailyTargetSpend" class="text-rose-400 font-bold">0 đ/ngày</strong>
+                    </div>
+                </div>
+
+                <!-- Month Days Config & Target Ratio -->
+                <div class="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 flex flex-col justify-between">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex justify-between items-center">
+                            <span>Số ngày trong tháng</span>
+                            <span id="monthDetectedLabel" class="text-slate-400 font-normal text-[11px]">(30 ngày)</span>
+                        </label>
+                        <div class="flex gap-2">
+                            <input type="number" id="targetDaysInMonth" min="1" max="31" value="30"
+                                class="bg-slate-900/70 border border-slate-700 text-white text-sm rounded-xl focus:ring-brand-500 focus:border-brand-500 block w-20 p-2.5 px-2 outline-none transition-all font-semibold text-center">
+                            <div class="flex-1 flex flex-col justify-center text-xs text-slate-400 px-1">
+                                <span>Tỷ lệ Ads dự kiến:</span>
+                                <strong id="targetCostRatio" class="text-purple-400 font-bold">0%</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-[11px] text-slate-500">
+                        * Tự động nhận diện từ bộ lọc hoặc bạn có thể chỉnh tay.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Comparison Section (Giai đoạn đã chọn) -->
+            <div id="targetComparisonSection" class="border-t border-white/10 pt-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                        <span>📊 So Sánh Thực Tế vs Mục Tiêu:</span>
+                        <span id="compareRangeLabel" class="text-brand-400 font-semibold">Tất cả thời gian</span>
+                    </h3>
+                    <span id="compareDaysCountBadge" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 font-medium">0 ngày</span>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    <!-- Revenue Comparison Card -->
+                    <div id="cardRevComparison" class="p-5 rounded-xl bg-slate-800/60 border border-slate-700/60 flex flex-col justify-between transition-all shadow-lg">
+                        <div>
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="text-xs font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                    Doanh Thu Thực Tế vs Mục Tiêu
+                                </span>
+                                <span id="revProgressPercent" class="text-xs font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">0%</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 text-sm mb-3">
+                                <div class="bg-slate-900/40 p-2.5 rounded-lg border border-slate-800">
+                                    <span class="text-slate-400 text-xs block mb-0.5">Mục tiêu (<span class="revDaysLabel">0</span> ngày):</span>
+                                    <span id="periodTargetRevText" class="font-bold text-white text-base">0 đ</span>
+                                </div>
+                                <div class="bg-slate-900/40 p-2.5 rounded-lg border border-slate-800">
+                                    <span class="text-slate-400 text-xs block mb-0.5">Thực tế thu được:</span>
+                                    <span id="periodActualRevText" class="font-bold text-emerald-400 text-base">0 đ</span>
+                                    <div id="actualRevSubtext" class="text-[10px] text-slate-400 mt-0.5"></div>
+                                </div>
+                            </div>
+                            <!-- Progress Bar -->
+                            <div class="w-full bg-slate-900/80 rounded-full h-2.5 mb-3 overflow-hidden p-0.5 border border-slate-700/50">
+                                <div id="revProgressBar" class="bg-gradient-to-r from-emerald-500 to-teal-400 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <!-- Status & Diff -->
+                        <div id="revDiffAlert" class="p-3 rounded-lg text-xs flex items-center justify-between font-medium bg-slate-900/60 border border-slate-700">
+                            <span id="revDiffLabel" class="text-slate-300">Chênh lệch:</span>
+                            <span id="revDiffValue" class="font-bold text-white">0 đ</span>
+                        </div>
+                    </div>
+
+                    <!-- Spend Comparison Card -->
+                    <div id="cardSpendComparison" class="p-5 rounded-xl bg-slate-800/60 border border-slate-700/60 flex flex-col justify-between transition-all shadow-lg">
+                        <div>
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="text-xs font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+                                    Chi Phí Ads Thực Tế vs Mục Tiêu
+                                </span>
+                                <span id="spendProgressPercent" class="text-xs font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">0%</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 text-sm mb-3">
+                                <div class="bg-slate-900/40 p-2.5 rounded-lg border border-slate-800">
+                                    <span class="text-slate-400 text-xs block mb-0.5">Định mức (<span class="spendDaysLabel">0</span> ngày):</span>
+                                    <span id="periodTargetSpendText" class="font-bold text-white text-base">0 đ</span>
+                                </div>
+                                <div class="bg-slate-900/40 p-2.5 rounded-lg border border-slate-800">
+                                    <span class="text-slate-400 text-xs block mb-0.5">Thực tế đã chi:</span>
+                                    <span id="periodActualSpendText" class="font-bold text-rose-400 text-base">0 đ</span>
+                                    <div id="actualSpendSubtext" class="text-[10px] text-slate-400 mt-0.5"></div>
+                                </div>
+                            </div>
+                            <!-- Progress Bar -->
+                            <div class="w-full bg-slate-900/80 rounded-full h-2.5 mb-3 overflow-hidden p-0.5 border border-slate-700/50">
+                                <div id="spendProgressBar" class="bg-gradient-to-r from-rose-500 to-amber-500 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <!-- Status & Diff -->
+                        <div id="spendDiffAlert" class="p-3 rounded-lg text-xs flex items-center justify-between font-medium bg-slate-900/60 border border-slate-700">
+                            <span id="spendDiffLabel" class="text-slate-300">Chênh lệch ngân sách:</span>
+                            <span id="spendDiffValue" class="font-bold text-white">0 đ</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actionable Insight / Warning Banner -->
+                <div id="targetActionBanner" class="mt-4 p-4 rounded-xl border border-white/10 hidden transition-all">
+                    <!-- Sẽ được cập nhật tự động bằng JS -->
+                </div>
+            </div>
+        </div>
+
         <!-- Action Buttons -->
         <div class="flex gap-4 mb-8">
             <button id="btnTuanAnh" class="flex-1 bg-brand-600 hover:bg-brand-500 text-white font-semibold py-3 px-6 rounded-2xl transition-all shadow-lg shadow-brand-500/30 border border-brand-400">

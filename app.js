@@ -23,6 +23,37 @@ const sumSpendEl = document.getElementById('sumSpend');
 const sumCpaEl = document.getElementById('sumCpa');
 const sumCostPercentEl = document.getElementById('sumCostPercent');
 
+// Target & KPI Elements
+const targetMonthRevInput = document.getElementById('targetMonthRevenue');
+const targetMonthSpendInput = document.getElementById('targetMonthSpend');
+const targetDaysInMonthInput = document.getElementById('targetDaysInMonth');
+const targetRevPreview = document.getElementById('targetRevPreview');
+const targetSpendPreview = document.getElementById('targetSpendPreview');
+const dailyTargetRevEl = document.getElementById('dailyTargetRev');
+const dailyTargetSpendEl = document.getElementById('dailyTargetSpend');
+const monthDetectedLabel = document.getElementById('monthDetectedLabel');
+const targetCostRatioEl = document.getElementById('targetCostRatio');
+const targetSelectedDaysText = document.getElementById('targetSelectedDaysText');
+const compareRangeLabel = document.getElementById('compareRangeLabel');
+const compareDaysCountBadge = document.getElementById('compareDaysCountBadge');
+const periodTargetRevText = document.getElementById('periodTargetRevText');
+const periodActualRevText = document.getElementById('periodActualRevText');
+const revProgressPercent = document.getElementById('revProgressPercent');
+const revProgressBar = document.getElementById('revProgressBar');
+const revDiffAlert = document.getElementById('revDiffAlert');
+const revDiffLabel = document.getElementById('revDiffLabel');
+const revDiffValue = document.getElementById('revDiffValue');
+const periodTargetSpendText = document.getElementById('periodTargetSpendText');
+const periodActualSpendText = document.getElementById('periodActualSpendText');
+const spendProgressPercent = document.getElementById('spendProgressPercent');
+const spendProgressBar = document.getElementById('spendProgressBar');
+const spendDiffAlert = document.getElementById('spendDiffAlert');
+const spendDiffLabel = document.getElementById('spendDiffLabel');
+const spendDiffValue = document.getElementById('spendDiffValue');
+const targetActionBanner = document.getElementById('targetActionBanner');
+const actualRevSubtext = document.getElementById('actualRevSubtext');
+const actualSpendSubtext = document.getElementById('actualSpendSubtext');
+
 let adsData = [];
 let rawAdsData = [];
 let rawSalesData = [];
@@ -36,6 +67,17 @@ let sortDirection = 'desc';
 let is10PercentMode = false;
 let currentFilter = 'all';
 
+// Target calculation state
+let currentGrandTotalRevenue = 0;
+let currentFinalSpendTotal = 0;
+let currentAllSalesRevenue = 0;
+let currentAllSalesOrders = 0;
+let currentSelectedDays = 0;
+let currentDateRangeText = 'Chưa chọn ngày';
+let isCustomDaysInMonth = false;
+let minAvailableDate = null;
+let maxAvailableDate = null;
+
 // Format currency VND
 const formatCurrency = (value) => {
     if (isNaN(value) || value === null) return '0 đ';
@@ -45,20 +87,31 @@ const formatCurrency = (value) => {
 // Convert cell Date or Serial to local JS Date (midnight)
 const extractDateFromCellDate = (val) => {
     if (!val) return null;
-    let date = val;
     if (typeof val === 'number') {
         // Excel serial to UTC date
         const utcMs = Math.round((val - 25569) * 86400 * 1000);
-        date = new Date(utcMs);
-    } else if (typeof val === 'string') {
-        date = new Date(val);
+        const d = new Date(utcMs);
+        return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
     }
-    if (!(date instanceof Date) || isNaN(date)) return null;
-
-    // cellDates=true creates a Date where UTC matches Excel's local time.
-    // e.g. Excel 2026-06-01 -> 2026-06-01T00:00:00Z
-    // We extract the UTC components to form a local Date object at midnight.
-    return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+    if (typeof val === 'string') {
+        const str = val.trim();
+        // Hỗ trợ DD/MM/YYYY hoặc DD-MM-YYYY phổ biến ở VN
+        const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+        if (dmyMatch) {
+            const day = parseInt(dmyMatch[1], 10);
+            const month = parseInt(dmyMatch[2], 10) - 1;
+            const year = parseInt(dmyMatch[3], 10);
+            return new Date(year, month, day);
+        }
+        const parsed = new Date(str);
+        if (!isNaN(parsed.getTime())) {
+            return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+        }
+    }
+    if (val instanceof Date && !isNaN(val.getTime())) {
+        return new Date(val.getUTCFullYear(), val.getUTCMonth(), val.getUTCDate());
+    }
+    return null;
 };
 
 // Initialize Flatpickr
@@ -71,15 +124,150 @@ let datePicker = flatpickr("#dateRange", {
         if (selectedDates.length === 2 || selectedDates.length === 0) {
             processData();
         }
+    },
+    onClose: function (selectedDates) {
+        if (selectedDates.length === 1) {
+            processData();
+        }
     }
 });
 
-// Parse numeric value
+// Format hiển thị mục tiêu dễ nhìn (kèm chữ triệu / tỷ)
+const formatTargetDisplay = (val) => {
+    if (!val || val <= 0) return '0 đ';
+    if (val >= 1000000000) {
+        const ty = (val / 1000000000).toFixed(val % 1000000000 === 0 ? 0 : 2);
+        return `${formatCurrency(val)} (${ty} tỷ)`;
+    } else if (val >= 1000000) {
+        const tr = (val / 1000000).toFixed(val % 1000000 === 0 ? 0 : 1);
+        return `${formatCurrency(val)} (${tr} triệu)`;
+    }
+    return formatCurrency(val);
+};
+
+// Parse numeric value (handles currency symbol ₫/đ/$, spaces, VN dots, commas)
 const parseNumeric = (val) => {
-    if (typeof val === 'number') return val;
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
     if (typeof val === 'string') {
-        const parsed = parseFloat(val.replace(/[^\d.-]/g, ''));
+        let str = val.trim().replace(/[₫đĐ$\s\u00a0]|vnd/gi, '');
+        if (!str) return 0;
+
+        // If it has both dot and comma
+        if (str.includes('.') && str.includes(',')) {
+            if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
+                // VN format: 1.000.000,50
+                str = str.replace(/\./g, '').replace(',', '.');
+            } else {
+                // US format: 1,000,000.50
+                str = str.replace(/,/g, '');
+            }
+        } else if ((str.match(/\./g) || []).length > 1) {
+            // Multiple dots: e.g. "500.000.000"
+            str = str.replace(/\./g, '');
+        } else if ((str.match(/,/g) || []).length > 1) {
+            // Multiple commas: e.g. "500,000,000"
+            str = str.replace(/,/g, '');
+        } else if (str.includes('.')) {
+            const parts = str.split('.');
+            // Single dot followed by 3 digits -> thousands separator (VN) e.g. 500.000
+            if (parts[1] && parts[1].length === 3) {
+                str = str.replace(/\./g, '');
+            }
+        } else if (str.includes(',')) {
+            const parts = str.split(',');
+            // Single comma followed by 3 digits -> thousands separator e.g. 500,000
+            if (parts[1] && parts[1].length === 3) {
+                str = str.replace(/,/g, '');
+            } else {
+                str = str.replace(',', '.');
+            }
+        }
+
+        const parsed = parseFloat(str.replace(/[^\d.-]/g, ''));
         return isNaN(parsed) ? 0 : parsed;
+    }
+    return 0;
+};
+
+// Helper: lấy giá trị trong row theo danh sách tên cột ứng viên (bỏ qua hoa/thường, khoảng trắng)
+const getRowVal = (row, candidates) => {
+    if (!row) return null;
+    for (const key of Object.keys(row)) {
+        const cleanKey = key.trim().toLowerCase();
+        for (const c of candidates) {
+            if (cleanKey === c.toLowerCase()) {
+                if (row[key] !== null && row[key] !== undefined && row[key] !== '') {
+                    return row[key];
+                }
+            }
+        }
+    }
+    return null;
+};
+
+// Nhận diện danh sách nhân viên Sale phụ trách của sheet Ads (dựa trên các cột "Sale - ..." hoặc "Sale ...")
+const getAssignedSaleStaff = (adsRows) => {
+    if (!adsRows || adsRows.length === 0) return [];
+    const sample = adsRows[0];
+    const staffList = [];
+    Object.keys(sample).forEach(key => {
+        const clean = key.trim();
+        // Không nhận các cột tổng tiền, chi phí, cp
+        if (/tổng|tiền|cp\/|chi phí/i.test(clean)) return;
+        if (/^sale\s*[-_:]?\s*/i.test(clean)) {
+            const name = clean.replace(/^sale\s*[-_:]?\s*/i, '').trim();
+            if (name && !staffList.includes(name)) staffList.push(name);
+        }
+    });
+    return staffList;
+};
+
+// Kiểm tra xem nhân viên bán hàng có thuộc danh sách phụ trách của tab không
+const isStaffMatched = (saleName, staffList) => {
+    if (!staffList || staffList.length === 0) return true;
+    const lower = (saleName || '').toLowerCase().trim();
+    return staffList.some(s => {
+        const staffLower = s.toLowerCase().trim();
+        // Đặc thù: Thảo lớn là Thu Thảo, không phải Phương Thảo
+        if (staffLower.includes('thảo lớn')) {
+            return lower.includes('thu thảo') || lower.includes('thảo lớn') || (lower.includes('thảo') && !lower.includes('phương'));
+        }
+        if (staffLower.includes('phương thảo')) {
+            return lower.includes('phương thảo');
+        }
+        return lower.includes(staffLower);
+    });
+};
+
+// Parse target inputs: hỗ trợ số đầy đủ, viết tắt 500tr, 500k, hoặc gõ nhanh 500 (= 500 triệu)
+const parseTargetInput = (inputEl) => {
+    if (!inputEl) return 0;
+    let str = (typeof inputEl === 'string' ? inputEl : (inputEl.value || '')).toString().trim().toLowerCase();
+    if (!str) return 0;
+
+    // Hỗ trợ "tỷ", "ty", "b"
+    if (str.includes('tỷ') || str.includes('ty') || str.includes('b')) {
+        const num = parseFloat(str.replace(/[^\d.-]/g, ''));
+        return isNaN(num) ? 0 : Math.round(num * 1000000000);
+    }
+    // Hỗ trợ "tr", "triệu", "trieu", "m"
+    if (str.includes('tr') || str.includes('m') || str.includes('triệu') || str.includes('trieu')) {
+        const num = parseFloat(str.replace(/[^\d.-]/g, ''));
+        return isNaN(num) ? 0 : Math.round(num * 1000000);
+    }
+    // Hỗ trợ "k", "nghìn", "ngàn"
+    if (str.includes('k') || str.includes('nghìn') || str.includes('ngàn')) {
+        const num = parseFloat(str.replace(/[^\d.-]/g, ''));
+        return isNaN(num) ? 0 : Math.round(num * 1000);
+    }
+
+    const cleanNum = parseNumeric(str);
+    if (cleanNum > 0) {
+        // Nếu nhập số nhỏ dưới 10.000 (ví dụ 500 hoặc 50): tự động hiểu là TRIỆU đồng
+        if (cleanNum < 10000) {
+            return Math.round(cleanNum * 1000000);
+        }
+        return Math.round(cleanNum);
     }
     return 0;
 };
@@ -96,40 +284,37 @@ excelFileInput.addEventListener('change', (e) => {
 
         adsDataMap = { 'tuananh': [], 'kiet': [] };
         sheetNameMap = { 'tuananh': '', 'kiet': '' };
-        let minDate = null;
-        let maxDate = null;
+        rawSalesData = [];
+        minAvailableDate = null;
+        maxAvailableDate = null;
+
+        const candidateSaleSheets = [];
 
         workbook.SheetNames.forEach(sheetName => {
             const lowerName = sheetName.toLowerCase();
             const worksheet = workbook.Sheets[sheetName];
             const data = XLSX.utils.sheet_to_json(worksheet, { defval: null });
 
-            // Detect SALE sheets
-            if (lowerName.includes('sale')) {
-                data.forEach(row => {
-                    const adId = row['ID Quảng Cáo'] || row['ID Ads'] || row['ID QC'] || null;
-                    const dateVal = row['Ngày đặt'] || row['Ngày'] || null;
-                    const amount = parseNumeric(row['Thành Tiền (Trước VAT)'] || row['Thành tiền'] || row['Thành Tiền'] || 0);
-                    const qty = parseNumeric(row['Số Lượng'] || row['Số lượng'] || 1);
+            // Nhận diện sheet Ads trước
+            const isAdsSheet = lowerName.includes('t.anh') || lowerName.includes('tuấn anh') || lowerName.includes('kiệt') || lowerName.includes('kiet');
 
-                    const jsDate = extractDateFromCellDate(dateVal);
-                    
-                    if (jsDate) {
-                        if (!minDate || jsDate < minDate) minDate = jsDate;
-                        if (!maxDate || jsDate > maxDate) maxDate = jsDate;
-                    }
+            // Sheet hoàn/hủy/loại trừ (tránh nhận nhầm tên nhân viên như Thu Huyền, Huyền Trang)
+            const isExcludedSheet = /(đơn\s*hoàn|đơn\s*hủy|hoàn\s*hàng|trả\s*hàng|refund|return)/i.test(lowerName) ||
+                (lowerName.includes('hoàn') && !lowerName.includes('sale')) ||
+                (lowerName.includes('hủy') && !lowerName.includes('sale'));
 
-                    const safeAdId = (adId && adId.toString().trim() !== '') ? adId.toString().trim() : null;
-                    const saleName = row['Sale'] || row['Tên Sale'] || row['Người bán'] || row['Nhân viên'] || row['NVKD'] || row['Tên NV'] || 'Không rõ';
+            // Detect SALE / Doanh Thu / Bán Hàng sheets
+            const isSaleSheet = !isAdsSheet && !isExcludedSheet && (
+                lowerName.includes('sale') || 
+                lowerName.includes('doanh') || 
+                lowerName.includes('bán') || 
+                lowerName.includes('đơn') || 
+                lowerName.includes('order') || 
+                lowerName.includes('revenue')
+            );
 
-                    rawSalesData.push({
-                        adId: safeAdId,
-                        saleName: saleName.toString().trim(),
-                        date: jsDate,
-                        revenue: amount,
-                        qty: qty > 0 ? qty : 1
-                    });
-                });
+            if (isSaleSheet) {
+                candidateSaleSheets.push({ sheetName, data });
             }
 
             // Detect ADS sheet Tuấn Anh
@@ -145,14 +330,80 @@ excelFileInput.addEventListener('change', (e) => {
             }
         });
 
+        // Nếu không tìm thấy sheet tên "sale/doanh/bán...", thử tìm sheet có cột tiền
+        if (candidateSaleSheets.length === 0) {
+            workbook.SheetNames.forEach(sheetName => {
+                const lowerName = sheetName.toLowerCase();
+                const isAdsSheet = lowerName.includes('t.anh') || lowerName.includes('tuấn anh') || lowerName.includes('kiệt') || lowerName.includes('kiet');
+                const isExcludedSheet = /(đơn\s*hoàn|đơn\s*hủy|hoàn\s*hàng|trả\s*hàng|refund|return)/i.test(lowerName) ||
+                    (lowerName.includes('hoàn') && !lowerName.includes('sale')) ||
+                    (lowerName.includes('hủy') && !lowerName.includes('sale'));
+                if (!isAdsSheet && !isExcludedSheet) {
+                    const worksheet = workbook.Sheets[sheetName];
+                    const data = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+                    if (data.length > 0) {
+                        const sampleRow = data[0];
+                        const hasMoneyCol = getRowVal(sampleRow, ['Thành Tiền (Trước VAT)', 'Thành tiền', 'Doanh thu', 'Doanh số', 'Tổng tiền', 'Đơn Giá (gồm VAT)']);
+                        if (hasMoneyCol !== null) {
+                            candidateSaleSheets.push({ sheetName, data });
+                        }
+                    }
+                }
+            });
+        }
+
+        // Đọc dữ liệu bán hàng từ các sheet Sale
+        candidateSaleSheets.forEach(({ sheetName, data }) => {
+            const defaultSaleName = sheetName.replace(/^(sale|nv|bán\s*hàng)\s*[-_:]\s*/i, '').trim();
+
+            data.forEach(row => {
+                const adId = getRowVal(row, ['ID Quảng Cáo', 'ID Ads', 'ID QC', 'Mã quảng cáo', 'Mã QC', 'Mã Ads', 'ID quảng cáo', 'ID']);
+                const dateVal = getRowVal(row, ['Ngày đặt', 'Ngày Đặt', 'Ngày', 'Ngày lên đơn', 'Ngày bán', 'Thời gian', 'Ngày tạo', 'Date']);
+                const amountVal = getRowVal(row, [
+                    'Thành Tiền (Trước VAT)', 'Thành tiền (trước VAT)', 'Thành tiền trước VAT', 'Thành Tiền (TRƯỚC VAT)', 
+                    'Thành tiền', 'Thành Tiền', 'Doanh thu', 'Doanh Thu', 'Doanh số', 'Doanh Số', 
+                    'Tổng tiền', 'Tổng Tiền', 'Tiền', 'Giá trị', 'Đơn Giá (gồm VAT)'
+                ]);
+                const amount = parseNumeric(amountVal);
+                const qty = parseNumeric(getRowVal(row, ['Số Lượng', 'Số lượng', 'SL', 'Quantity']) || 1);
+                const slDonRaw = getRowVal(row, ['SL đơn tháng này', 'SL đơn', 'Số đơn']);
+                const slDon = (slDonRaw !== null && slDonRaw !== undefined && slDonRaw !== '') ? parseInt(slDonRaw, 10) : null;
+                const khCode = (getRowVal(row, ['SĐT KH', 'SDT KH', 'KH Số', 'Mã KH']) || '').toString().trim();
+
+                const jsDate = extractDateFromCellDate(dateVal);
+                if (jsDate) {
+                    if (!minAvailableDate || jsDate < minAvailableDate) minAvailableDate = jsDate;
+                    if (!maxAvailableDate || jsDate > maxAvailableDate) maxAvailableDate = jsDate;
+                }
+
+                const safeAdId = (adId && adId.toString().trim() !== '') ? adId.toString().trim() : null;
+                const saleName = getRowVal(row, ['Sale', 'Tên Sale', 'Người bán', 'Nhân viên', 'NVKD', 'Tên NV', 'Nhân viên sale']) || defaultSaleName || 'Không rõ';
+
+                rawSalesData.push({
+                    adId: safeAdId,
+                    saleName: saleName.toString().trim(),
+                    date: jsDate,
+                    revenue: amount,
+                    qty: qty > 0 ? qty : 1,
+                    slDon: slDon,
+                    khCode: khCode
+                });
+            });
+        });
+
         // Set default rawAdsData to current active tab
         rawAdsData = adsDataMap[activeTab];
         sheetNameLabel.textContent = sheetNameMap[activeTab] ? `(Dữ liệu từ ${sheetNameMap[activeTab]})` : '(Không tìm thấy sheet)';
 
-        // Set default dates
-        if (minDate && maxDate) {
-            // Default to showing all available data from the file
-            datePicker.setDate([minDate, maxDate]);
+        // Đặt khoảng ngày mặc định vào THÁNG MỚI NHẤT của dữ liệu (tránh gộp các tháng cũ trong file)
+        if (maxAvailableDate) {
+            const defaultStart = new Date(maxAvailableDate.getFullYear(), maxAvailableDate.getMonth(), 1);
+            const fmtStart = `${defaultStart.getFullYear()}-${(defaultStart.getMonth() + 1).toString().padStart(2, '0')}-01`;
+            const fmtEnd = `${maxAvailableDate.getFullYear()}-${(maxAvailableDate.getMonth() + 1).toString().padStart(2, '0')}-${maxAvailableDate.getDate().toString().padStart(2, '0')}`;
+            datePicker.setDate([fmtStart, fmtEnd], true);
+        } else if (minAvailableDate) {
+            const fmtMin = `${minAvailableDate.getFullYear()}-${(minAvailableDate.getMonth() + 1).toString().padStart(2, '0')}-${minAvailableDate.getDate().toString().padStart(2, '0')}`;
+            datePicker.setDate([fmtMin, fmtMin], true);
         }
 
         processData();
@@ -249,12 +500,269 @@ btnExport.addEventListener('click', () => {
     const wb = XLSX.utils.book_new();
     const sheetName = activeTab === 'tuananh' ? 'BaoCao_TuanAnh' : 'BaoCao_Kiet';
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+    // Xuất thêm sheet Mục Tiêu & Kế Hoạch nếu người dùng có nhập
+    const targetRev = parseTargetInput(targetMonthRevInput);
+    const targetSpend = parseTargetInput(targetMonthSpendInput);
+    if (targetRev > 0 || targetSpend > 0) {
+        const daysInMonth = parseInt(targetDaysInMonthInput ? targetDaysInMonthInput.value : 30, 10) || 30;
+        const dailyRev = targetRev / daysInMonth;
+        const dailySpend = targetSpend / daysInMonth;
+        const pTargetRev = currentSelectedDays * dailyRev;
+        const pTargetSpend = currentSelectedDays * dailySpend;
+        const diffRev = currentGrandTotalRevenue - pTargetRev;
+        const diffSpend = currentFinalSpendTotal - pTargetSpend;
+        const isOver = diffSpend > 0 && pTargetSpend > 0;
+
+        const targetExportData = [
+            { 'Hạng Mục': 'Mục tiêu Doanh Thu Tháng', 'Số Liệu': targetRev, 'Đơn Vị': 'VND' },
+            { 'Hạng Mục': 'Mục tiêu Chi Phí Ads Tháng', 'Số Liệu': targetSpend, 'Đơn Vị': 'VND' },
+            { 'Hạng Mục': 'Số ngày trong tháng', 'Số Liệu': daysInMonth, 'Đơn Vị': 'Ngày' },
+            { 'Hạng Mục': 'Mục tiêu Doanh Thu / Ngày', 'Số Liệu': Math.round(dailyRev), 'Đơn Vị': 'VND/ngày' },
+            { 'Hạng Mục': 'Mục tiêu Chi Phí Ads / Ngày', 'Số Liệu': Math.round(dailySpend), 'Đơn Vị': 'VND/ngày' },
+            { 'Hạng Mục': 'Khoảng thời gian chọn', 'Số Liệu': currentDateRangeText, 'Đơn Vị': '' },
+            { 'Hạng Mục': 'Số ngày được chọn', 'Số Liệu': currentSelectedDays, 'Đơn Vị': 'Ngày' },
+            { 'Hạng Mục': `Mục tiêu Doanh Thu (${currentSelectedDays} ngày)`, 'Số Liệu': Math.round(pTargetRev), 'Đơn Vị': 'VND' },
+            { 'Hạng Mục': 'Doanh Thu thực tế thu được', 'Số Liệu': currentGrandTotalRevenue, 'Đơn Vị': 'VND' },
+            { 'Hạng Mục': 'Chênh lệch Doanh Thu', 'Số Liệu': diffRev, 'Đơn Vị': diffRev < 0 ? 'Đang thiếu' : 'Đạt / Vượt' },
+            { 'Hạng Mục': `Mục tiêu Chi Phí Ads (${currentSelectedDays} ngày)`, 'Số Liệu': Math.round(pTargetSpend), 'Đơn Vị': 'VND' },
+            { 'Hạng Mục': 'Chi Phí Ads thực tế đã chi', 'Số Liệu': currentFinalSpendTotal, 'Đơn Vị': 'VND' },
+            { 'Hạng Mục': 'Chênh lệch Chi Phí', 'Số Liệu': diffSpend, 'Đơn Vị': isOver ? 'VƯỢT NGÂN SÁCH (CẦN CẮT GIẢM)' : 'Trong định mức / Tiết kiệm' }
+        ];
+        const wsTarget = XLSX.utils.json_to_sheet(targetExportData);
+        XLSX.utils.book_append_sheet(wb, wsTarget, 'KeHoach_MucTieu');
+    }
     
     // Generate filename
     const now = new Date();
     const dateStr = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}`;
     XLSX.writeFile(wb, `BaoCao_DoanhSo_${activeTab}_${dateStr}.xlsx`);
 });
+
+// Target Management Logic
+const calculateTargets = () => {
+    const targetRev = parseTargetInput(targetMonthRevInput);
+    const targetSpend = parseTargetInput(targetMonthSpendInput);
+    let daysInMonth = parseInt(targetDaysInMonthInput ? targetDaysInMonthInput.value : 30, 10);
+    if (isNaN(daysInMonth) || daysInMonth <= 0) daysInMonth = 30;
+
+    // Save to localStorage
+    if (targetRev > 0) localStorage.setItem('cptt_target_month_rev', targetRev);
+    if (targetSpend > 0) localStorage.setItem('cptt_target_month_spend', targetSpend);
+    localStorage.setItem('cptt_target_days_month', daysInMonth);
+
+    // 1. Calculate Daily Breakdown
+    const dailyRev = daysInMonth > 0 ? (targetRev / daysInMonth) : 0;
+    const dailySpend = daysInMonth > 0 ? (targetSpend / daysInMonth) : 0;
+
+    if (dailyTargetRevEl) dailyTargetRevEl.textContent = formatCurrency(Math.round(dailyRev)) + '/ngày';
+    if (dailyTargetSpendEl) dailyTargetSpendEl.textContent = formatCurrency(Math.round(dailySpend)) + '/ngày';
+
+    const targetRatio = targetRev > 0 ? (targetSpend / targetRev) * 100 : 0;
+    if (targetCostRatioEl) targetCostRatioEl.textContent = targetRatio.toFixed(1) + '%';
+
+    // 2. Selected Period Calculation
+    const days = currentSelectedDays > 0 ? currentSelectedDays : 0;
+    if (targetSelectedDaysText) targetSelectedDaysText.textContent = `${days} ngày`;
+    if (compareDaysCountBadge) compareDaysCountBadge.textContent = `${days} ngày`;
+    if (compareRangeLabel) compareRangeLabel.textContent = currentDateRangeText;
+
+    document.querySelectorAll('.revDaysLabel').forEach(el => el.textContent = days);
+    document.querySelectorAll('.spendDaysLabel').forEach(el => el.textContent = days);
+
+    const periodTargetRev = days * dailyRev;
+    const periodTargetSpend = days * dailySpend;
+
+    if (periodTargetRevText) periodTargetRevText.textContent = formatCurrency(Math.round(periodTargetRev));
+    if (periodTargetSpendText) periodTargetSpendText.textContent = formatCurrency(Math.round(periodTargetSpend));
+
+    const actualRev = currentGrandTotalRevenue;
+    const actualSpend = currentFinalSpendTotal;
+
+    if (periodActualRevText) periodActualRevText.textContent = formatCurrency(actualRev);
+    if (periodActualSpendText) periodActualSpendText.textContent = formatCurrency(actualSpend);
+
+    if (actualRevSubtext) {
+        if (currentAllSalesOrders > 0) {
+            actualRevSubtext.textContent = `(Từ các mã ID Ads: ${currentAllSalesOrders} đơn)`;
+        } else {
+            actualRevSubtext.textContent = `(0 đơn có ID Ads)`;
+        }
+    }
+
+    if (actualSpendSubtext) {
+        if (rawExpenseData.length > 0) {
+            actualSpendSubtext.textContent = `Nguồn: Chi tiêu thực tế (Đã đổi đuôi ID)`;
+        } else {
+            actualSpendSubtext.textContent = `Nguồn: Báo cáo Ads trong file`;
+        }
+    }
+
+    // 3. Revenue Comparison
+    let revPct = periodTargetRev > 0 ? (actualRev / periodTargetRev) * 100 : 0;
+    if (revProgressPercent) revProgressPercent.textContent = revPct.toFixed(1) + '%';
+    if (revProgressBar) revProgressBar.style.width = Math.min(revPct, 100) + '%';
+
+    const diffRev = actualRev - periodTargetRev;
+    if (periodTargetRev === 0) {
+        if (revDiffAlert) {
+            revDiffAlert.className = 'p-3 rounded-lg text-xs flex items-center justify-between font-medium bg-slate-900/60 border border-slate-700';
+            revDiffLabel.textContent = 'Chưa đặt mục tiêu doanh thu';
+            revDiffValue.textContent = '-';
+            revDiffValue.className = 'font-bold text-slate-400';
+        }
+    } else if (diffRev < 0) {
+        if (revDiffAlert) {
+            revDiffAlert.className = 'p-3 rounded-lg text-xs flex items-center justify-between font-medium bg-amber-950/40 border border-amber-500/50';
+            revDiffLabel.innerHTML = '<span class="flex items-center gap-1.5 text-amber-400 font-semibold"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> Đang thiếu doanh số:</span>';
+            revDiffValue.innerHTML = `<span class="text-amber-300 font-extrabold text-sm">-${formatCurrency(Math.abs(diffRev))}</span> <span class="text-[11px] text-amber-400/80">(Đạt ${revPct.toFixed(1)}%)</span>`;
+        }
+    } else {
+        if (revDiffAlert) {
+            revDiffAlert.className = 'p-3 rounded-lg text-xs flex items-center justify-between font-medium bg-emerald-950/40 border border-emerald-500/50';
+            revDiffLabel.innerHTML = '<span class="flex items-center gap-1.5 text-emerald-400 font-semibold"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Vượt mục tiêu doanh thu:</span>';
+            revDiffValue.innerHTML = `<span class="text-emerald-300 font-extrabold text-sm">+${formatCurrency(diffRev)}</span> <span class="text-[11px] text-emerald-400/80">(Đạt ${revPct.toFixed(1)}%)</span>`;
+        }
+    }
+
+    // 4. Spend Comparison & Warning
+    let spendPct = periodTargetSpend > 0 ? (actualSpend / periodTargetSpend) * 100 : 0;
+    if (spendProgressPercent) spendProgressPercent.textContent = spendPct.toFixed(1) + '%';
+    if (spendProgressBar) spendProgressBar.style.width = Math.min(spendPct, 100) + '%';
+
+    const diffSpend = actualSpend - periodTargetSpend;
+    const isOverBudget = diffSpend > 0 && periodTargetSpend > 0;
+
+    if (periodTargetSpend === 0) {
+        if (spendDiffAlert) {
+            spendDiffAlert.className = 'p-3 rounded-lg text-xs flex items-center justify-between font-medium bg-slate-900/60 border border-slate-700';
+            spendDiffLabel.textContent = 'Chưa đặt mục tiêu chi phí';
+            spendDiffValue.textContent = '-';
+            spendDiffValue.className = 'font-bold text-slate-400';
+        }
+    } else if (isOverBudget) {
+        if (spendDiffAlert) {
+            spendDiffAlert.className = 'p-3 rounded-lg text-xs flex items-center justify-between font-medium bg-rose-950/50 border border-rose-500/60 shadow-lg shadow-rose-900/30 animate-pulse';
+            spendDiffLabel.innerHTML = '<span class="flex items-center gap-1.5 text-rose-400 font-bold"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> CHI PHÍ VƯỢT QUÁ:</span>';
+            spendDiffValue.innerHTML = `<span class="text-rose-300 font-black text-sm">+${formatCurrency(diffSpend)}</span> <span class="text-[11px] text-rose-400/80">(Vượt ${(spendPct - 100).toFixed(1)}%)</span>`;
+        }
+    } else {
+        if (spendDiffAlert) {
+            spendDiffAlert.className = 'p-3 rounded-lg text-xs flex items-center justify-between font-medium bg-emerald-950/40 border border-emerald-500/50';
+            spendDiffLabel.innerHTML = '<span class="flex items-center gap-1.5 text-emerald-400 font-semibold"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> Tiết kiệm / Dư ngân sách:</span>';
+            spendDiffValue.innerHTML = `<span class="text-emerald-300 font-bold text-sm">-${formatCurrency(Math.abs(diffSpend))}</span> <span class="text-[11px] text-emerald-400/80">(Chi ${spendPct.toFixed(1)}%)</span>`;
+        }
+    }
+
+    // 5. Actionable Recommendation Banner
+    renderActionBanner(periodTargetRev, actualRev, diffRev, periodTargetSpend, actualSpend, diffSpend, isOverBudget, days, daysInMonth);
+};
+
+const renderActionBanner = (pTargetRev, actualRev, diffRev, pTargetSpend, actualSpend, diffSpend, isOverBudget, selDays, daysInMonth) => {
+    if (!targetActionBanner) return;
+
+    if (actualRev === 0 && actualSpend === 0 && pTargetRev === 0 && pTargetSpend === 0) {
+        targetActionBanner.classList.add('hidden');
+        return;
+    }
+
+    targetActionBanner.classList.remove('hidden');
+
+    const dangerCount = adsData.filter(ad => {
+        const threshold = ad.threshold !== null ? ad.threshold : (parseFloat(globalThresholdInput.value) || 0);
+        const defaultZero = 350000;
+        const spend = ad.spendToEvaluate;
+        if (ad.orders === 0) {
+            const t = threshold > 0 ? threshold : defaultZero;
+            return spend > t;
+        }
+        return threshold > 0 && ad.cpa > threshold;
+    }).length;
+
+    const remainingDays = Math.max(0, daysInMonth - selDays);
+
+    if (isOverBudget) {
+        targetActionBanner.className = 'mt-4 p-4 rounded-xl border border-rose-500/50 bg-gradient-to-r from-rose-950/60 via-slate-900/80 to-slate-900 transition-all';
+        targetActionBanner.innerHTML = `
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div class="flex items-start gap-3">
+                    <span class="text-3xl mt-0.5">⚠️</span>
+                    <div>
+                        <h4 class="text-sm font-bold text-rose-300 flex items-center gap-2">
+                            CẢNH BÁO CẮT GIẢM: CHI PHÍ QUẢNG CÁO VƯỢT QUÁ NGÂN SÁCH!
+                        </h4>
+                        <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+                            Trong <strong class="text-white">${selDays} ngày</strong> qua, bạn đã chi <strong class="text-rose-400">${formatCurrency(actualSpend)}</strong>, vượt ngân sách định mức <strong class="text-rose-400">${formatCurrency(diffSpend)}</strong>. 
+                            ${diffRev < 0 ? `Đồng thời doanh thu đang thiếu <strong class="text-amber-300">${formatCurrency(Math.abs(diffRev))}</strong>.` : ''}
+                        </p>
+                        <div class="mt-2 text-xs text-rose-200 font-medium flex flex-wrap items-center gap-2">
+                            <span class="bg-rose-500/20 px-2.5 py-1 rounded-md border border-rose-500/40 text-rose-300">
+                                ✂️ Đề xuất cắt giảm: <strong>${formatCurrency(diffSpend)}</strong>
+                            </span>
+                            ${remainingDays > 0 ? `
+                                <span class="text-slate-400">
+                                    (Còn ${remainingDays} ngày trong tháng, ngân sách còn lại nên siết chặt trung bình <strong>${formatCurrency(Math.max(0, (parseNumeric(targetMonthSpendInput.value) - actualSpend) / remainingDays))}/ngày</strong>)
+                                </span>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+                ${dangerCount > 0 ? `
+                    <button id="quickFilterDangerBtn" class="flex-none bg-rose-600 hover:bg-rose-500 text-white font-semibold py-2.5 px-4 rounded-xl text-xs transition-all shadow-lg shadow-rose-500/30 whitespace-nowrap flex items-center gap-1.5 cursor-pointer">
+                        <span>🔍 Lọc ${dangerCount} QC Vượt Ngưỡng</span>
+                    </button>
+                ` : ''}
+            </div>
+        `;
+
+        const filterBtn = document.getElementById('quickFilterDangerBtn');
+        if (filterBtn) {
+            filterBtn.addEventListener('click', () => {
+                const dangerFilterEl = document.getElementById('filter-danger');
+                if (dangerFilterEl) dangerFilterEl.click();
+                tableContainer.scrollIntoView({ behavior: 'smooth' });
+            });
+        }
+    } else if (diffRev < 0 && pTargetRev > 0) {
+        targetActionBanner.className = 'mt-4 p-4 rounded-xl border border-amber-500/50 bg-gradient-to-r from-amber-950/50 via-slate-900/80 to-slate-900 transition-all';
+        targetActionBanner.innerHTML = `
+            <div class="flex items-start gap-3">
+                <span class="text-3xl mt-0.5">📉</span>
+                <div>
+                    <h4 class="text-sm font-bold text-amber-300">
+                        CẦN TĂNG TỐC DOANH THU ĐỂ KỊP TIẾN ĐỘ THÁNG
+                    </h4>
+                    <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+                        Doanh thu đạt <strong class="text-emerald-400">${formatCurrency(actualRev)}</strong> trong ${selDays} ngày, đang hụt <strong class="text-amber-300">${formatCurrency(Math.abs(diffRev))}</strong> so với kế hoạch (${((actualRev/pTargetRev)*100).toFixed(1)}%). 
+                        Chi phí Ads vẫn trong tầm kiểm soát (tiết kiệm <strong class="text-emerald-400">${formatCurrency(Math.abs(diffSpend))}</strong>).
+                    </p>
+                    ${remainingDays > 0 ? `
+                        <div class="mt-2 text-xs text-amber-200 font-medium">
+                            🎯 Mục tiêu còn lại trong ${remainingDays} ngày cuối tháng: cần đạt trung bình <strong>${formatCurrency(Math.max(0, (parseNumeric(targetMonthRevInput.value) - actualRev) / remainingDays))}/ngày</strong>.
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    } else if (pTargetRev > 0 && pTargetSpend > 0) {
+        targetActionBanner.className = 'mt-4 p-4 rounded-xl border border-emerald-500/50 bg-gradient-to-r from-emerald-950/50 via-slate-900/80 to-slate-900 transition-all';
+        targetActionBanner.innerHTML = `
+            <div class="flex items-start gap-3">
+                <span class="text-3xl mt-0.5">🎉</span>
+                <div>
+                    <h4 class="text-sm font-bold text-emerald-300">
+                        TIẾN ĐỘ RẤT TỐT: DOANH SỐ ĐẠT MỤC TIÊU & CHI PHÍ TRONG TẦM KIỂM SOÁT
+                    </h4>
+                    <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+                        Doanh thu thực tế vượt mục tiêu <strong class="text-emerald-400">+${formatCurrency(diffRev)}</strong> và chi phí Ads tiết kiệm <strong class="text-emerald-400">${formatCurrency(Math.abs(diffSpend))}</strong> so với định mức ngân sách. Hãy tiếp tục duy trì và nhân bản các chiến dịch hiệu quả!
+                    </p>
+                </div>
+            </div>
+        `;
+    } else {
+        targetActionBanner.classList.add('hidden');
+    }
+};
 
 // Process data 
 const processData = () => {
@@ -263,21 +771,51 @@ const processData = () => {
     // Parse filters from Flatpickr
     let fromFilter = null;
     let toFilter = null;
+    currentSelectedDays = 0;
+    currentDateRangeText = 'Tất cả thời gian';
 
     if (datePicker.selectedDates.length > 0) {
         fromFilter = new Date(datePicker.selectedDates[0]);
         fromFilter.setHours(0, 0, 0, 0);
+
+        // Auto update days in month if user hasn't explicitly customized
+        const filterYear = fromFilter.getFullYear();
+        const filterMonth = fromFilter.getMonth() + 1;
+        const daysInMonthDetected = new Date(filterYear, filterMonth, 0).getDate();
+        if (!isCustomDaysInMonth && targetDaysInMonthInput) {
+            targetDaysInMonthInput.value = daysInMonthDetected;
+            if (monthDetectedLabel) monthDetectedLabel.textContent = `(Tháng ${filterMonth}: ${daysInMonthDetected} ngày)`;
+        }
+
         if (datePicker.selectedDates.length === 2) {
             toFilter = new Date(datePicker.selectedDates[1]);
             toFilter.setHours(23, 59, 59, 999);
+            const toMidnight = new Date(datePicker.selectedDates[1]);
+            toMidnight.setHours(0, 0, 0, 0);
+            const diffMs = Math.abs(toMidnight.getTime() - fromFilter.getTime());
+            currentSelectedDays = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+            currentDateRangeText = `${fromFilter.toLocaleDateString('vi-VN')} - ${toMidnight.toLocaleDateString('vi-VN')}`;
         } else {
             toFilter = new Date(datePicker.selectedDates[0]);
             toFilter.setHours(23, 59, 59, 999);
+            currentSelectedDays = 1;
+            currentDateRangeText = fromFilter.toLocaleDateString('vi-VN');
         }
+    } else if (minAvailableDate && maxAvailableDate) {
+        const diffMs = Math.abs(maxAvailableDate.getTime() - minAvailableDate.getTime());
+        currentSelectedDays = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+        currentDateRangeText = `${minAvailableDate.toLocaleDateString('vi-VN')} - ${maxAvailableDate.toLocaleDateString('vi-VN')}`;
+    } else {
+        currentSelectedDays = 0;
+        currentDateRangeText = 'Chưa chọn khoảng ngày';
     }
 
-    // 1. Aggregate Sales by Ad ID
+    // 1. Aggregate Sales by Ad ID & Total Sales
     const salesAgg = {};
+    let totalSalesRevenueAll = 0;
+    let totalSalesOrdersAll = 0;
+    const staffList = getAssignedSaleStaff(rawAdsData);
+
     rawSalesData.forEach(sale => {
         let isMatch = true;
 
@@ -287,11 +825,30 @@ const processData = () => {
         }
 
         if (isMatch) {
-            if (!salesAgg[sale.adId]) {
-                salesAgg[sale.adId] = { orders: 0, revenue: 0 };
+            // Xác định số đơn: nếu có slDon thì dùng slDon, ngược lại nếu revenue > 0 tính 1
+            let orderInc = 0;
+            if (sale.slDon !== undefined && sale.slDon !== null && !isNaN(sale.slDon)) {
+                if (sale.slDon > 0) {
+                    orderInc = sale.slDon;
+                } else if (maxAvailableDate && sale.date && (sale.date.getMonth() !== maxAvailableDate.getMonth() || sale.date.getFullYear() !== maxAvailableDate.getFullYear())) {
+                    // Dữ liệu tháng trước trong file Excel có slDonThangNay = 0, nên nếu có doanh thu thì tính 1 đơn
+                    orderInc = sale.revenue > 0 ? 1 : 0;
+                }
+            } else {
+                orderInc = sale.revenue > 0 ? 1 : 0;
             }
-            salesAgg[sale.adId].orders += 1;
-            salesAgg[sale.adId].revenue += sale.revenue;
+
+            totalSalesRevenueAll += sale.revenue;
+            totalSalesOrdersAll += orderInc;
+
+            // Chỉ cộng dồn theo các mã ID Quảng Cáo
+            if (sale.adId) {
+                if (!salesAgg[sale.adId]) {
+                    salesAgg[sale.adId] = { orders: 0, revenue: 0 };
+                }
+                salesAgg[sale.adId].orders += orderInc;
+                salesAgg[sale.adId].revenue += sale.revenue;
+            }
         }
     });
 
@@ -338,7 +895,10 @@ const processData = () => {
             totalRevenue = salesAgg[adId].revenue;
         }
 
-        let spend = parseNumeric(row['Tiền Ads (chưa VAT)'] || row['Tiền Ads (Vat 10%)'] || row['Chi phí'] || 0);
+        let spend = parseNumeric(getRowVal(row, [
+            'Tiền Ads (chưa VAT)', 'Tiền Ads (chưa vat)', 'Tiền Ads (Vat 10%)', 'Tiền Ads (VAT 10%)',
+            'Tổng Tiền ADS', 'Tổng tiền ADS', 'Tiền Ads / 1.1', 'Chi phí', 'Tiền ADS', 'Tiền Ads'
+        ]));
         const uniqueId = adId || Math.random().toString(36).substr(2, 9);
         
         processedIds.add(uniqueId);
@@ -411,6 +971,12 @@ const processData = () => {
         costPercent = (finalSpendTotal / grandTotalRevenue) * 100;
     }
     sumCostPercentEl.textContent = costPercent.toFixed(2) + '%';
+
+    currentAllSalesRevenue = grandTotalRevenue;
+    currentAllSalesOrders = grandTotalOrders;
+    currentGrandTotalRevenue = grandTotalRevenue;
+    currentFinalSpendTotal = finalSpendTotal;
+    calculateTargets();
 
     sortDataAndRender();
     renderSalesPerformance();
@@ -745,6 +1311,9 @@ const renderSalesPerformance = () => {
         }
     }
 
+    // Tập hợp danh sách ID QC của tab hiện tại để chỉ tính hiệu suất Sale cho các đơn có ID QC này
+    const currentTabAdIds = new Set(rawAdsData.map(r => (r['ID QC'] || r['ID Ads'] || r['ID Quảng Cáo'] || '').toString().trim()).filter(Boolean));
+
     const saleAgg = {};
     rawSalesData.forEach(sale => {
         let isMatch = true;
@@ -754,11 +1323,23 @@ const renderSalesPerformance = () => {
             if (toFilter && sale.date > toFilter) isMatch = false;
         }
 
-        if (isMatch) {
+        // Chỉ ghi nhận vào hiệu suất Sale nếu đơn hàng có mã ID QC thuộc tab hiện tại
+        if (isMatch && sale.adId && currentTabAdIds.has(sale.adId)) {
+            let orderInc = 0;
+            if (sale.slDon !== undefined && sale.slDon !== null && !isNaN(sale.slDon)) {
+                if (sale.slDon > 0) {
+                    orderInc = sale.slDon;
+                } else if (maxAvailableDate && sale.date && (sale.date.getMonth() !== maxAvailableDate.getMonth() || sale.date.getFullYear() !== maxAvailableDate.getFullYear())) {
+                    orderInc = sale.revenue > 0 ? 1 : 0;
+                }
+            } else {
+                orderInc = sale.revenue > 0 ? 1 : 0;
+            }
+
             if (!saleAgg[sale.saleName]) {
                 saleAgg[sale.saleName] = { orders: 0, revenue: 0 };
             }
-            saleAgg[sale.saleName].orders += 1;
+            saleAgg[sale.saleName].orders += orderInc;
             saleAgg[sale.saleName].revenue += sale.revenue;
         }
     });
@@ -805,3 +1386,109 @@ const renderSalesPerformance = () => {
         salesPerfBody.appendChild(tr);
     });
 };
+
+// Target Inputs Event Listeners & Initialization
+if (targetMonthRevInput) {
+    targetMonthRevInput.addEventListener('input', () => {
+        const val = targetMonthRevInput.value.trim();
+        if (!val) {
+            if (targetRevPreview) targetRevPreview.textContent = '0 đ';
+        } else {
+            const parsed = parseTargetInput(targetMonthRevInput);
+            if (targetRevPreview) targetRevPreview.textContent = formatTargetDisplay(parsed);
+        }
+        calculateTargets();
+    });
+
+    targetMonthRevInput.addEventListener('blur', () => {
+        const parsed = parseTargetInput(targetMonthRevInput);
+        if (parsed > 0) {
+            targetMonthRevInput.value = parsed.toLocaleString('vi-VN');
+            if (targetRevPreview) targetRevPreview.textContent = formatTargetDisplay(parsed);
+        }
+        calculateTargets();
+    });
+}
+
+if (targetMonthSpendInput) {
+    targetMonthSpendInput.addEventListener('input', () => {
+        const val = targetMonthSpendInput.value.trim();
+        if (!val) {
+            if (targetSpendPreview) targetSpendPreview.textContent = '0 đ';
+        } else {
+            const parsed = parseTargetInput(targetMonthSpendInput);
+            if (targetSpendPreview) targetSpendPreview.textContent = formatTargetDisplay(parsed);
+        }
+        calculateTargets();
+    });
+
+    targetMonthSpendInput.addEventListener('blur', () => {
+        const parsed = parseTargetInput(targetMonthSpendInput);
+        if (parsed > 0) {
+            targetMonthSpendInput.value = parsed.toLocaleString('vi-VN');
+            if (targetSpendPreview) targetSpendPreview.textContent = formatTargetDisplay(parsed);
+        }
+        calculateTargets();
+    });
+}
+
+if (targetDaysInMonthInput) {
+    targetDaysInMonthInput.addEventListener('input', () => {
+        isCustomDaysInMonth = true;
+        const days = parseInt(targetDaysInMonthInput.value, 10);
+        if (!isNaN(days) && days > 0 && monthDetectedLabel) {
+            monthDetectedLabel.textContent = `(Tùy chỉnh: ${days} ngày)`;
+        }
+        calculateTargets();
+    });
+
+    targetDaysInMonthInput.addEventListener('blur', () => {
+        let days = parseInt(targetDaysInMonthInput.value, 10);
+        if (isNaN(days) || days < 1) {
+            days = 30;
+            targetDaysInMonthInput.value = 30;
+        }
+        calculateTargets();
+    });
+}
+
+// Restore saved targets from localStorage
+const initTargets = () => {
+    try {
+        const savedRev = localStorage.getItem('cptt_target_month_rev');
+        const savedSpend = localStorage.getItem('cptt_target_month_spend');
+        const savedDays = localStorage.getItem('cptt_target_days_month');
+
+        if (savedRev) {
+            let num = parseNumeric(savedRev);
+            if (num > 0 && num < 10000) num *= 1000000;
+            if (num > 0 && targetMonthRevInput) {
+                targetMonthRevInput.value = num.toLocaleString('vi-VN');
+                if (targetRevPreview) targetRevPreview.textContent = formatTargetDisplay(num);
+            }
+        }
+        if (savedSpend) {
+            let num = parseNumeric(savedSpend);
+            if (num > 0 && num < 10000) num *= 1000000;
+            if (num > 0 && targetMonthSpendInput) {
+                targetMonthSpendInput.value = num.toLocaleString('vi-VN');
+                if (targetSpendPreview) targetSpendPreview.textContent = formatTargetDisplay(num);
+            }
+        }
+        if (savedDays) {
+            const days = parseInt(savedDays, 10);
+            if (days > 0 && targetDaysInMonthInput) {
+                targetDaysInMonthInput.value = days;
+                isCustomDaysInMonth = true;
+                if (monthDetectedLabel) monthDetectedLabel.textContent = `(Tùy chỉnh: ${days} ngày)`;
+            }
+        }
+    } catch (e) {
+        console.warn('LocalStorage error:', e);
+    }
+
+    calculateTargets();
+};
+
+// Initialize Targets on load
+initTargets();
