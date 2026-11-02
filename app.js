@@ -877,6 +877,41 @@ const processData = () => {
         }
     });
 
+    // Tổng gộp cả 2 sheet Ads (Tuấn Anh + Kiệt) - mỗi ID QC chỉ tính 1 lần
+    const computeCombinedTotals = () => {
+        const seen = new Set();
+        let rev = 0, orders = 0, spend = 0;
+        ['tuananh', 'kiet'].forEach(tab => {
+            (adsDataMap[tab] || []).forEach(row => {
+                const id = (row['ID QC'] || row['ID Ads'] || row['ID Quảng Cáo'] || '').toString().trim();
+                const sp = parseNumeric(getRowVal(row, [
+                    'Tiền Ads (chưa VAT)', 'Tiền Ads (chưa vat)', 'Tiền Ads (Vat 10%)', 'Tiền Ads (VAT 10%)',
+                    'Tổng Tiền ADS', 'Tổng tiền ADS', 'Tiền Ads / 1.1', 'Chi phí', 'Tiền ADS', 'Tiền Ads'
+                ]));
+                if (id) {
+                    if (seen.has(id)) return;
+                    seen.add(id);
+                    if (salesAgg[id]) {
+                        rev += salesAgg[id].revenue;
+                        orders += salesAgg[id].orders;
+                    }
+                }
+                spend += sp;
+            });
+        });
+        if (hasExpenseFile) {
+            spend = Object.values(realSpendMap).reduce((a, b) => a + b, 0);
+        }
+        return { rev, orders, spend, cpa: orders > 0 ? spend / orders : 0 };
+    };
+    const combined = computeCombinedTotals();
+    const setText = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    setText('combinedRevenue', formatCurrency(combined.rev));
+    setText('combinedOrders', combined.orders.toLocaleString('vi-VN'));
+    setText('combinedCpa', formatCurrency(Math.round(combined.cpa)));
+    setText('combinedSpend', formatCurrency(combined.spend));
+    setText('combinedCostRatio', combined.rev > 0 ? `${((combined.spend / combined.rev) * 100).toFixed(2)}%` : '0%');
+
     const processedIds = new Set();
 
     // 2. Map with Ads data
