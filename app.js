@@ -502,8 +502,8 @@ btnExport.addEventListener('click', () => {
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
     // Xuất thêm sheet Mục Tiêu & Kế Hoạch nếu người dùng có nhập
-    const targetRev = parseTargetInput(targetMonthRevInput);
-    const targetSpend = parseTargetInput(targetMonthSpendInput);
+    const targetRev = getTabTarget(targetMonthRevInput);
+    const targetSpend = getTabTarget(targetMonthSpendInput);
     if (targetRev > 0 || targetSpend > 0) {
         const daysInMonth = parseInt(targetDaysInMonthInput ? targetDaysInMonthInput.value : 30, 10) || 30;
         const dailyRev = targetRev / daysInMonth;
@@ -539,24 +539,57 @@ btnExport.addEventListener('click', () => {
     XLSX.writeFile(wb, `BaoCao_DoanhSo_${activeTab}_${dateStr}.xlsx`);
 });
 
+const getTabShare = (tab = activeTab) => {
+    const el = document.getElementById('shareTuanAnh');
+    let ta = el ? parseFloat(el.value) : 50;
+    if (isNaN(ta)) ta = 50;
+    ta = Math.min(100, Math.max(0, ta));
+    return (tab === 'tuananh' ? ta : 100 - ta) / 100;
+};
+const getTabTarget = (inputEl, tab = activeTab) => parseTargetInput(inputEl) * getTabShare(tab);
+
+const updateShareUI = () => {
+    const totalRev = parseTargetInput(targetMonthRevInput);
+    const totalSpend = parseTargetInput(targetMonthSpendInput);
+    const taPct = Math.round(getTabShare('tuananh') * 1000) / 10;
+    const kPct = Math.round((100 - taPct) * 10) / 10;
+    const set = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
+    set('shareKietText', `${kPct}%`);
+    set('shareTARev', formatCurrency(Math.round(totalRev * taPct / 100)));
+    set('shareTASpend', formatCurrency(Math.round(totalSpend * taPct / 100)));
+    set('shareKRev', formatCurrency(Math.round(totalRev * kPct / 100)));
+    set('shareKSpend', formatCurrency(Math.round(totalSpend * kPct / 100)));
+    set('activeTabTargetLabel', activeTab === 'tuananh' ? `Ads Tuấn Anh (${taPct}%)` : `Ads Kiệt (${kPct}%)`);
+    const bar = document.getElementById('shareBarTA');
+    if (bar) bar.style.width = taPct + '%';
+    const cTA = document.getElementById('shareCardTA');
+    const cK = document.getElementById('shareCardK');
+    const on = 'ring-2 ring-brand-400 bg-brand-500/10';
+    if (cTA) on.split(' ').forEach(c => cTA.classList.toggle(c, activeTab === 'tuananh'));
+    if (cK) on.split(' ').forEach(c => cK.classList.toggle(c, activeTab === 'kiet'));
+};
+
 // Target Management Logic
 const calculateTargets = () => {
-    const targetRev = parseTargetInput(targetMonthRevInput);
-    const targetSpend = parseTargetInput(targetMonthSpendInput);
+    const totalTargetRev = parseTargetInput(targetMonthRevInput);
+    const totalTargetSpend = parseTargetInput(targetMonthSpendInput);
+    const targetRev = getTabTarget(targetMonthRevInput);
+    const targetSpend = getTabTarget(targetMonthSpendInput);
     let daysInMonth = parseInt(targetDaysInMonthInput ? targetDaysInMonthInput.value : 30, 10);
     if (isNaN(daysInMonth) || daysInMonth <= 0) daysInMonth = 30;
 
-    // Save to localStorage
-    if (targetRev > 0) localStorage.setItem('cptt_target_month_rev', targetRev);
-    if (targetSpend > 0) localStorage.setItem('cptt_target_month_spend', targetSpend);
+    // Save to localStorage (lưu mục tiêu TỔNG)
+    if (totalTargetRev > 0) localStorage.setItem('cptt_target_month_rev', totalTargetRev);
+    if (totalTargetSpend > 0) localStorage.setItem('cptt_target_month_spend', totalTargetSpend);
     localStorage.setItem('cptt_target_days_month', daysInMonth);
+    updateShareUI();
 
-    // 1. Calculate Daily Breakdown
+    // 1. Calculate Daily Breakdown (theo tổng)
     const dailyRev = daysInMonth > 0 ? (targetRev / daysInMonth) : 0;
     const dailySpend = daysInMonth > 0 ? (targetSpend / daysInMonth) : 0;
 
-    if (dailyTargetRevEl) dailyTargetRevEl.textContent = formatCurrency(Math.round(dailyRev)) + '/ngày';
-    if (dailyTargetSpendEl) dailyTargetSpendEl.textContent = formatCurrency(Math.round(dailySpend)) + '/ngày';
+    if (dailyTargetRevEl) dailyTargetRevEl.textContent = formatCurrency(Math.round(totalTargetRev / daysInMonth)) + '/ngày';
+    if (dailyTargetSpendEl) dailyTargetSpendEl.textContent = formatCurrency(Math.round(totalTargetSpend / daysInMonth)) + '/ngày';
 
     const targetRatio = targetRev > 0 ? (targetSpend / targetRev) * 100 : 0;
     if (targetCostRatioEl) targetCostRatioEl.textContent = targetRatio.toFixed(1) + '%';
@@ -701,7 +734,7 @@ const renderActionBanner = (pTargetRev, actualRev, diffRev, pTargetSpend, actual
                             </span>
                             ${remainingDays > 0 ? `
                                 <span class="text-slate-400">
-                                    (Còn ${remainingDays} ngày trong tháng, ngân sách còn lại nên siết chặt trung bình <strong>${formatCurrency(Math.max(0, (parseNumeric(targetMonthSpendInput.value) - actualSpend) / remainingDays))}/ngày</strong>)
+                                    (Còn ${remainingDays} ngày trong tháng, ngân sách còn lại nên siết chặt trung bình <strong>${formatCurrency(Math.max(0, (getTabTarget(targetMonthSpendInput) - actualSpend) / remainingDays))}/ngày</strong>)
                                 </span>
                             ` : ''}
                         </div>
@@ -738,7 +771,7 @@ const renderActionBanner = (pTargetRev, actualRev, diffRev, pTargetSpend, actual
                     </p>
                     ${remainingDays > 0 ? `
                         <div class="mt-2 text-xs text-amber-200 font-medium">
-                            🎯 Mục tiêu còn lại trong ${remainingDays} ngày cuối tháng: cần đạt trung bình <strong>${formatCurrency(Math.max(0, (parseNumeric(targetMonthRevInput.value) - actualRev) / remainingDays))}/ngày</strong>.
+                            🎯 Mục tiêu còn lại trong ${remainingDays} ngày cuối tháng: cần đạt trung bình <strong>${formatCurrency(Math.max(0, (getTabTarget(targetMonthRevInput) - actualRev) / remainingDays))}/ngày</strong>.
                         </div>
                     ` : ''}
                 </div>
@@ -1524,6 +1557,24 @@ const initTargets = () => {
 
     calculateTargets();
 };
+
+// Share split input
+const shareInput = document.getElementById('shareTuanAnh');
+if (shareInput) {
+    const savedShare = localStorage.getItem('cptt_share_tuananh');
+    if (savedShare !== null) shareInput.value = savedShare;
+    shareInput.addEventListener('input', () => {
+        localStorage.setItem('cptt_share_tuananh', shareInput.value);
+        calculateTargets();
+    });
+    shareInput.addEventListener('blur', () => {
+        let v = parseFloat(shareInput.value);
+        if (isNaN(v)) v = 50;
+        shareInput.value = Math.min(100, Math.max(0, v));
+        localStorage.setItem('cptt_share_tuananh', shareInput.value);
+        calculateTargets();
+    });
+}
 
 // Initialize Targets on load
 initTargets();

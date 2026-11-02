@@ -161,7 +161,7 @@
                 <!-- Target Revenue Month -->
                 <div class="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 hover:border-emerald-500/40 transition-colors">
                     <label class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex justify-between items-center">
-                        <span>Mục tiêu Doanh Thu Tháng</span>
+                        <span>Tổng Mục tiêu Doanh Thu Tháng</span>
                         <span id="targetRevPreview" class="text-emerald-400 font-bold normal-case text-xs">0 đ</span>
                     </label>
                     <div class="relative">
@@ -177,7 +177,7 @@
                 <!-- Target Spend Month -->
                 <div class="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 hover:border-rose-500/40 transition-colors">
                     <label class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex justify-between items-center">
-                        <span>Mục tiêu Chi Phí Ads Tháng</span>
+                        <span>Tổng Mục tiêu Chi Phí Ads Tháng</span>
                         <span id="targetSpendPreview" class="text-rose-400 font-bold normal-case text-xs">0 đ</span>
                     </label>
                     <div class="relative">
@@ -212,11 +212,41 @@
                 </div>
             </div>
 
+            <!-- Phân bổ % mục tiêu giữa 2 Ads -->
+            <div class="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 mb-6">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-300">⚖️ Phân bổ mục tiêu cho từng Ads</span>
+                    <div class="flex items-center gap-2 text-sm">
+                        <span class="text-slate-400">Tuấn Anh</span>
+                        <input type="number" id="shareTuanAnh" min="0" max="100" step="1" value="50"
+                            class="bg-slate-900/70 border border-slate-700 text-brand-300 text-sm rounded-lg w-20 p-1.5 text-center font-bold outline-none focus:border-brand-500">
+                        <span class="text-slate-400">% → Kiệt</span>
+                        <strong id="shareKietText" class="text-purple-300">50%</strong>
+                    </div>
+                </div>
+                <div class="w-full h-2 rounded-full bg-purple-500/40 overflow-hidden mb-3">
+                    <div id="shareBarTA" class="h-full bg-gradient-to-r from-brand-500 to-sky-400 transition-all duration-300" style="width:50%"></div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div id="shareCardTA" class="p-3 rounded-lg border border-slate-700/60 bg-slate-900/40 transition-all">
+                        <div class="font-semibold text-brand-300 mb-1">Ads Tuấn Anh</div>
+                        <div class="flex justify-between text-slate-400"><span>Doanh thu:</span><strong id="shareTARev" class="text-emerald-400">0 đ</strong></div>
+                        <div class="flex justify-between text-slate-400"><span>Chi phí Ads:</span><strong id="shareTASpend" class="text-rose-400">0 đ</strong></div>
+                    </div>
+                    <div id="shareCardK" class="p-3 rounded-lg border border-slate-700/60 bg-slate-900/40 transition-all">
+                        <div class="font-semibold text-purple-300 mb-1">Ads Kiệt</div>
+                        <div class="flex justify-between text-slate-400"><span>Doanh thu:</span><strong id="shareKRev" class="text-emerald-400">0 đ</strong></div>
+                        <div class="flex justify-between text-slate-400"><span>Chi phí Ads:</span><strong id="shareKSpend" class="text-rose-400">0 đ</strong></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Comparison Section (Giai đoạn đã chọn) -->
             <div id="targetComparisonSection" class="border-t border-white/10 pt-5">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-sm font-semibold text-slate-300 flex items-center gap-2">
                         <span>📊 So Sánh Thực Tế vs Mục Tiêu:</span>
+                        <span id="activeTabTargetLabel" class="text-xs px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 border border-brand-500/30">Ads Tuấn Anh</span>
                         <span id="compareRangeLabel" class="text-brand-400 font-semibold">Tất cả thời gian</span>
                     </h3>
                     <span id="compareDaysCountBadge" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 font-medium">0 ngày</span>
