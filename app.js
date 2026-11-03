@@ -305,11 +305,11 @@ excelFileInput.addEventListener('change', (e) => {
 
             // Detect SALE / Doanh Thu / Bán Hàng sheets
             const isSaleSheet = !isAdsSheet && !isExcludedSheet && (
-                lowerName.includes('sale') || 
-                lowerName.includes('doanh') || 
-                lowerName.includes('bán') || 
-                lowerName.includes('đơn') || 
-                lowerName.includes('order') || 
+                lowerName.includes('sale') ||
+                lowerName.includes('doanh') ||
+                lowerName.includes('bán') ||
+                lowerName.includes('đơn') ||
+                lowerName.includes('order') ||
                 lowerName.includes('revenue')
             );
 
@@ -322,9 +322,9 @@ excelFileInput.addEventListener('change', (e) => {
                 sheetNameMap['tuananh'] = sheetName;
                 adsDataMap['tuananh'] = data;
             }
-            
+
             // Detect ADS sheet Kiệt
-            if (lowerName.includes('kiệt') || lowerName.includes('kiet')) {
+            if (lowerName.includes('luyện') || lowerName.includes('kiet')) {
                 sheetNameMap['kiet'] = sheetName;
                 adsDataMap['kiet'] = data;
             }
@@ -360,8 +360,8 @@ excelFileInput.addEventListener('change', (e) => {
                 const adId = getRowVal(row, ['ID Quảng Cáo', 'ID Ads', 'ID QC', 'Mã quảng cáo', 'Mã QC', 'Mã Ads', 'ID quảng cáo', 'ID']);
                 const dateVal = getRowVal(row, ['Ngày đặt', 'Ngày Đặt', 'Ngày', 'Ngày lên đơn', 'Ngày bán', 'Thời gian', 'Ngày tạo', 'Date']);
                 const amountVal = getRowVal(row, [
-                    'Thành Tiền (Trước VAT)', 'Thành tiền (trước VAT)', 'Thành tiền trước VAT', 'Thành Tiền (TRƯỚC VAT)', 
-                    'Thành tiền', 'Thành Tiền', 'Doanh thu', 'Doanh Thu', 'Doanh số', 'Doanh Số', 
+                    'Thành Tiền (Trước VAT)', 'Thành tiền (trước VAT)', 'Thành tiền trước VAT', 'Thành Tiền (TRƯỚC VAT)',
+                    'Thành tiền', 'Thành Tiền', 'Doanh thu', 'Doanh Thu', 'Doanh số', 'Doanh Số',
                     'Tổng tiền', 'Tổng Tiền', 'Tiền', 'Giá trị', 'Đơn Giá (gồm VAT)'
                 ]);
                 const amount = parseNumeric(amountVal);
@@ -423,7 +423,7 @@ expenseFileInput.addEventListener('change', (e) => {
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         rawExpenseData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
-        
+
         processData();
     };
     reader.readAsArrayBuffer(file);
@@ -532,10 +532,10 @@ btnExport.addEventListener('click', () => {
         const wsTarget = XLSX.utils.json_to_sheet(targetExportData);
         XLSX.utils.book_append_sheet(wb, wsTarget, 'KeHoach_MucTieu');
     }
-    
+
     // Generate filename
     const now = new Date();
-    const dateStr = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}`;
+    const dateStr = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}`;
     XLSX.writeFile(wb, `BaoCao_DoanhSo_${activeTab}_${dateStr}.xlsx`);
 });
 
@@ -766,7 +766,7 @@ const renderActionBanner = (pTargetRev, actualRev, diffRev, pTargetSpend, actual
                         CẦN TĂNG TỐC DOANH THU ĐỂ KỊP TIẾN ĐỘ THÁNG
                     </h4>
                     <p class="text-xs text-slate-300 mt-1 leading-relaxed">
-                        Doanh thu đạt <strong class="text-emerald-400">${formatCurrency(actualRev)}</strong> trong ${selDays} ngày, đang hụt <strong class="text-amber-300">${formatCurrency(Math.abs(diffRev))}</strong> so với kế hoạch (${((actualRev/pTargetRev)*100).toFixed(1)}%). 
+                        Doanh thu đạt <strong class="text-emerald-400">${formatCurrency(actualRev)}</strong> trong ${selDays} ngày, đang hụt <strong class="text-amber-300">${formatCurrency(Math.abs(diffRev))}</strong> so với kế hoạch (${((actualRev / pTargetRev) * 100).toFixed(1)}%). 
                         Chi phí Ads vẫn trong tầm kiểm soát (tiết kiệm <strong class="text-emerald-400">${formatCurrency(Math.abs(diffSpend))}</strong>).
                     </p>
                     ${remainingDays > 0 ? `
@@ -968,9 +968,9 @@ const processData = () => {
             'Tổng Tiền ADS', 'Tổng tiền ADS', 'Tiền Ads / 1.1', 'Chi phí', 'Tiền ADS', 'Tiền Ads'
         ]));
         const uniqueId = adId || Math.random().toString(36).substr(2, 9);
-        
+
         processedIds.add(uniqueId);
-        
+
         const realSpend = realSpendMap[uniqueId] || 0;
         const spendToEvaluate = hasExpenseFile ? realSpend : spend;
 
@@ -1004,7 +1004,7 @@ const processData = () => {
         if (!processedIds.has(expId)) {
             const realSpend = realSpendMap[expId];
             grandTotalRealSpend += realSpend;
-            
+
             adsData.push({
                 id: expId,
                 campaign: 'Không có trong Báo Cáo',
@@ -1024,10 +1024,10 @@ const processData = () => {
     summaryCards.classList.remove('hidden');
     sumRevenueEl.textContent = formatCurrency(grandTotalRevenue);
     sumOrdersEl.textContent = grandTotalOrders;
-    
+
     const finalSpendTotal = hasExpenseFile ? grandTotalRealSpend : grandTotalSpend;
     sumSpendEl.textContent = formatCurrency(finalSpendTotal);
-    
+
     let grandCpa = 0;
     if (grandTotalOrders > 0) {
         grandCpa = finalSpendTotal / grandTotalOrders;
@@ -1087,7 +1087,7 @@ const sortDataAndRender = () => {
                     return 1;
                 } else {
                     const threshold = ad.threshold !== null ? ad.threshold : (parseFloat(globalThresholdInput.value) || 0);
-                    
+
                     if (ad.orders === 0) {
                         if (spendToEvaluate === 0) return 0;
                         const t = threshold > 0 ? threshold : defaultZeroOrderThreshold;
@@ -1095,7 +1095,7 @@ const sortDataAndRender = () => {
                         if (spendToEvaluate >= t * 0.8) return 2;
                         return 1;
                     }
-                    
+
                     if (threshold > 0) {
                         if (ad.cpa > threshold) return 3;
                         if (ad.cpa >= threshold * 0.8) return 2;
@@ -1149,7 +1149,7 @@ const renderTable = () => {
         let statusClass = 'status-good';
         let statusText = 'Tốt';
         let rowClass = '';
-        
+
         const rowThreshold = ad.threshold !== null ? ad.threshold : globalThreshold;
         const spendToEvaluate = ad.spendToEvaluate;
 
@@ -1258,16 +1258,16 @@ const renderTable = () => {
                 ${ad.orders > 0 ? formatCurrency(ad.cpa) : '<span class="text-slate-500 font-normal">N/A</span>'}
             </td>
             <td class="px-6 py-4">
-                ${is10PercentMode ? 
-                    (ad.orders === 0 ? 
-                        `<span class="text-purple-400 font-medium whitespace-nowrap">Mặc định: 350.000 đ</span>` : 
-                        `<span class="text-purple-400 font-medium whitespace-nowrap">Ngưỡng: ${formatCurrency(ad.revenue * 0.1)}</span>`) :
-                    `<input type="number" 
+                ${is10PercentMode ?
+                (ad.orders === 0 ?
+                    `<span class="text-purple-400 font-medium whitespace-nowrap">Mặc định: 350.000 đ</span>` :
+                    `<span class="text-purple-400 font-medium whitespace-nowrap">Ngưỡng: ${formatCurrency(ad.revenue * 0.1)}</span>`) :
+                `<input type="number" 
                            data-id="${ad.id}" 
                            value="${ad.threshold !== null ? ad.threshold : ''}" 
                            placeholder="${globalThreshold > 0 ? 'Mặc: ' + globalThreshold : 'Nhập...'}"
                            class="row-threshold w-full bg-slate-900/50 border border-slate-700/50 text-white text-xs rounded focus:ring-brand-500 focus:border-brand-500 block p-2 outline-none placeholder-slate-600 transition-all">`
-                }
+            }
             </td>
             <td class="px-6 py-4 text-center">
                 <div class="flex flex-col items-center justify-center gap-1">
@@ -1333,7 +1333,7 @@ filterBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         const filter = btn.getAttribute('data-filter');
         currentFilter = filter;
-        
+
         // Update UI
         filterBtns.forEach(b => {
             if (b.getAttribute('data-filter') === filter) {
@@ -1366,7 +1366,7 @@ const renderSalesPerformance = () => {
     // Aggregate by Sale Name based on date filter
     let fromFilter = null;
     let toFilter = null;
-    
+
     if (datePicker.selectedDates.length > 0) {
         fromFilter = new Date(datePicker.selectedDates[0]);
         fromFilter.setHours(0, 0, 0, 0);
@@ -1374,7 +1374,7 @@ const renderSalesPerformance = () => {
             toFilter = new Date(datePicker.selectedDates[1]);
             toFilter.setHours(23, 59, 59, 999);
         } else {
-            toFilter = new Date(datePicker.selectedDates[0]); 
+            toFilter = new Date(datePicker.selectedDates[0]);
             toFilter.setHours(23, 59, 59, 999);
         }
     }
@@ -1385,7 +1385,7 @@ const renderSalesPerformance = () => {
     const saleAgg = {};
     rawSalesData.forEach(sale => {
         let isMatch = true;
-        
+
         if (sale.date) {
             if (fromFilter && sale.date < fromFilter) isMatch = false;
             if (toFilter && sale.date > toFilter) isMatch = false;
@@ -1425,7 +1425,7 @@ const renderSalesPerformance = () => {
 
     sortedSales.forEach((s, index) => {
         const tr = document.createElement('tr');
-        
+
         // Highlight top 3
         let rankClass = 'text-slate-400';
         if (index === 0) rankClass = 'text-yellow-400 font-bold text-lg drop-shadow-[0_0_5px_rgba(250,204,21,0.5)]';
