@@ -154,6 +154,31 @@
                         <span id="combinedCostRatio" class="text-lg font-bold text-purple-400">0%</span>
                     </div>
                 </div>
+                <!-- Doanh số thiếu & Chi phí vượt so với mục tiêu -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-3">
+                    <div id="combinedRevGapCard" class="p-4 rounded-xl border border-slate-700/50 bg-slate-800/40 transition-all">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs text-slate-400 flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                                Doanh Số Còn Thiếu (so với mục tiêu)
+                            </span>
+                            <span id="combinedRevGapPct" class="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-700/60 text-slate-400">-</span>
+                        </div>
+                        <span id="combinedRevGap" class="text-lg font-bold text-slate-500">Chưa đặt mục tiêu</span>
+                        <div id="combinedRevGapSub" class="text-[11px] text-slate-500 mt-1"></div>
+                    </div>
+                    <div id="combinedSpendGapCard" class="p-4 rounded-xl border border-slate-700/50 bg-slate-800/40 transition-all">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs text-slate-400 flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+                                Chi Phí Đang Tiêu Vượt (so với mục tiêu)
+                            </span>
+                            <span id="combinedSpendGapPct" class="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-700/60 text-slate-400">-</span>
+                        </div>
+                        <span id="combinedSpendGap" class="text-lg font-bold text-slate-500">Chưa đặt mục tiêu</span>
+                        <div id="combinedSpendGapSub" class="text-[11px] text-slate-500 mt-1"></div>
+                    </div>
+                </div>
             </div>
 
             <!-- Inputs & Daily Breakdown -->

@@ -77,6 +77,7 @@ let currentDateRangeText = 'Chưa chọn ngày';
 let isCustomDaysInMonth = false;
 let minAvailableDate = null;
 let maxAvailableDate = null;
+let lastCombinedTotals = { rev: 0, orders: 0, spend: 0, cpa: 0 };
 
 // Format currency VND
 const formatCurrency = (value) => {
@@ -689,6 +690,9 @@ const calculateTargets = () => {
 
     // 5. Actionable Recommendation Banner
     renderActionBanner(periodTargetRev, actualRev, diffRev, periodTargetSpend, actualSpend, diffSpend, isOverBudget, days, daysInMonth);
+
+    // 6. Cập nhật card Doanh Số Thiếu & Chi Phí Vượt cho tổng 2 Ads
+    if (typeof updateCombinedGapCards === 'function') updateCombinedGapCards(lastCombinedTotals);
 };
 
 const renderActionBanner = (pTargetRev, actualRev, diffRev, pTargetSpend, actualSpend, diffSpend, isOverBudget, selDays, daysInMonth) => {
@@ -794,6 +798,101 @@ const renderActionBanner = (pTargetRev, actualRev, diffRev, pTargetSpend, actual
         `;
     } else {
         targetActionBanner.classList.add('hidden');
+    }
+};
+
+// === Cập nhật card Doanh Số Thiếu & Chi Phí Vượt (TỔNG 2 Ads) ===
+const updateCombinedGapCards = (combined) => {
+    const totalTargetRev = parseTargetInput(targetMonthRevInput);
+    const totalTargetSpend = parseTargetInput(targetMonthSpendInput);
+    let daysInMonth = parseInt(targetDaysInMonthInput ? targetDaysInMonthInput.value : 30, 10);
+    if (isNaN(daysInMonth) || daysInMonth <= 0) daysInMonth = 30;
+    const days = currentSelectedDays > 0 ? currentSelectedDays : 0;
+
+    // Mục tiêu TỔNG cho giai đoạn đã chọn (cả 2 Ads cộng lại, không chia theo share)
+    const periodTargetRev = days > 0 && daysInMonth > 0 ? (totalTargetRev / daysInMonth) * days : 0;
+    const periodTargetSpend = days > 0 && daysInMonth > 0 ? (totalTargetSpend / daysInMonth) * days : 0;
+
+    const revGapEl = document.getElementById('combinedRevGap');
+    const revGapPctEl = document.getElementById('combinedRevGapPct');
+    const revGapSubEl = document.getElementById('combinedRevGapSub');
+    const revGapCard = document.getElementById('combinedRevGapCard');
+
+    const spendGapEl = document.getElementById('combinedSpendGap');
+    const spendGapPctEl = document.getElementById('combinedSpendGapPct');
+    const spendGapSubEl = document.getElementById('combinedSpendGapSub');
+    const spendGapCard = document.getElementById('combinedSpendGapCard');
+
+    // --- Doanh Số Còn Thiếu ---
+    if (periodTargetRev > 0) {
+        const diffRev = combined.rev - periodTargetRev;
+        const pct = (combined.rev / periodTargetRev) * 100;
+        if (diffRev < 0) {
+            // Đang thiếu
+            if (revGapEl) {
+                revGapEl.textContent = '-' + formatCurrency(Math.abs(diffRev));
+                revGapEl.className = 'text-lg font-bold text-amber-400';
+            }
+            if (revGapPctEl) {
+                revGapPctEl.textContent = 'Đạt ' + pct.toFixed(1) + '%';
+                revGapPctEl.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30';
+            }
+            if (revGapCard) revGapCard.className = 'p-4 rounded-xl border border-amber-500/40 bg-gradient-to-br from-amber-500/10 to-slate-900/60 transition-all';
+            if (revGapSubEl) revGapSubEl.textContent = 'Mục tiêu ' + days + ' ngày: ' + formatCurrency(Math.round(periodTargetRev)) + ' | Thực tế: ' + formatCurrency(combined.rev);
+        } else {
+            // Đạt / Vượt
+            if (revGapEl) {
+                revGapEl.textContent = '✓ Đạt mục tiêu (+' + formatCurrency(diffRev) + ')';
+                revGapEl.className = 'text-lg font-bold text-emerald-400';
+            }
+            if (revGapPctEl) {
+                revGapPctEl.textContent = pct.toFixed(1) + '%';
+                revGapPctEl.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+            }
+            if (revGapCard) revGapCard.className = 'p-4 rounded-xl border border-emerald-500/40 bg-gradient-to-br from-emerald-500/10 to-slate-900/60 transition-all';
+            if (revGapSubEl) revGapSubEl.textContent = 'Mục tiêu ' + days + ' ngày: ' + formatCurrency(Math.round(periodTargetRev)) + ' | Thực tế: ' + formatCurrency(combined.rev);
+        }
+    } else {
+        if (revGapEl) { revGapEl.textContent = 'Chưa đặt mục tiêu'; revGapEl.className = 'text-lg font-bold text-slate-500'; }
+        if (revGapPctEl) { revGapPctEl.textContent = '-'; revGapPctEl.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-slate-700/60 text-slate-400'; }
+        if (revGapCard) revGapCard.className = 'p-4 rounded-xl border border-slate-700/50 bg-slate-800/40 transition-all';
+        if (revGapSubEl) revGapSubEl.textContent = '';
+    }
+
+    // --- Chi Phí Đang Tiêu Vượt ---
+    if (periodTargetSpend > 0) {
+        const diffSpend = combined.spend - periodTargetSpend;
+        const pct = (combined.spend / periodTargetSpend) * 100;
+        if (diffSpend > 0) {
+            // Vượt quá
+            if (spendGapEl) {
+                spendGapEl.textContent = '+' + formatCurrency(diffSpend);
+                spendGapEl.className = 'text-lg font-bold text-rose-400';
+            }
+            if (spendGapPctEl) {
+                spendGapPctEl.textContent = 'Vượt ' + (pct - 100).toFixed(1) + '%';
+                spendGapPctEl.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse';
+            }
+            if (spendGapCard) spendGapCard.className = 'p-4 rounded-xl border border-rose-500/40 bg-gradient-to-br from-rose-500/10 to-slate-900/60 transition-all';
+            if (spendGapSubEl) spendGapSubEl.textContent = 'Định mức ' + days + ' ngày: ' + formatCurrency(Math.round(periodTargetSpend)) + ' | Đã chi: ' + formatCurrency(combined.spend);
+        } else {
+            // Trong định mức
+            if (spendGapEl) {
+                spendGapEl.textContent = '✓ Trong định mức (tiết kiệm ' + formatCurrency(Math.abs(diffSpend)) + ')';
+                spendGapEl.className = 'text-lg font-bold text-emerald-400';
+            }
+            if (spendGapPctEl) {
+                spendGapPctEl.textContent = 'Chi ' + pct.toFixed(1) + '%';
+                spendGapPctEl.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+            }
+            if (spendGapCard) spendGapCard.className = 'p-4 rounded-xl border border-emerald-500/40 bg-gradient-to-br from-emerald-500/10 to-slate-900/60 transition-all';
+            if (spendGapSubEl) spendGapSubEl.textContent = 'Định mức ' + days + ' ngày: ' + formatCurrency(Math.round(periodTargetSpend)) + ' | Đã chi: ' + formatCurrency(combined.spend);
+        }
+    } else {
+        if (spendGapEl) { spendGapEl.textContent = 'Chưa đặt mục tiêu'; spendGapEl.className = 'text-lg font-bold text-slate-500'; }
+        if (spendGapPctEl) { spendGapPctEl.textContent = '-'; spendGapPctEl.className = 'text-[11px] font-bold px-2 py-0.5 rounded bg-slate-700/60 text-slate-400'; }
+        if (spendGapCard) spendGapCard.className = 'p-4 rounded-xl border border-slate-700/50 bg-slate-800/40 transition-all';
+        if (spendGapSubEl) spendGapSubEl.textContent = '';
     }
 };
 
@@ -938,12 +1037,16 @@ const processData = () => {
         return { rev, orders, spend, cpa: orders > 0 ? spend / orders : 0 };
     };
     const combined = computeCombinedTotals();
+    lastCombinedTotals = combined;
     const setText = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
     setText('combinedRevenue', formatCurrency(combined.rev));
     setText('combinedOrders', combined.orders.toLocaleString('vi-VN'));
     setText('combinedCpa', formatCurrency(Math.round(combined.cpa)));
     setText('combinedSpend', formatCurrency(combined.spend));
     setText('combinedCostRatio', combined.rev > 0 ? `${((combined.spend / combined.rev) * 100).toFixed(2)}%` : '0%');
+
+    // === Tính Doanh Số Còn Thiếu & Chi Phí Vượt Quá (TỔNG 2 Ads so với mục tiêu) ===
+    updateCombinedGapCards(combined);
 
     const processedIds = new Set();
 
